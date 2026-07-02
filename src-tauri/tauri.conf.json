@@ -1,0 +1,67 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "VoiceFlow AI",
+  "version": "0.1.9",
+  "identifier": "com.voiceflow.ai",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "语音随写",
+        "url": "index.html",
+        "width": 520,
+        "height": 450,
+        "alwaysOnTop": true,
+        "decorations": false,
+        "transparent": false,
+        "visible": false,
+        "additionalBrowserArgs": "--use-fake-ui-for-media-stream"
+      },
+      {
+        "label": "indicator",
+        "title": "VoiceFlow Island",
+        "url": "pill.html?v=2",
+        "width": 320,
+        "height": 100,
+        "alwaysOnTop": true,
+        "decorations": false,
+        "transparent": true,
+        "visible": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "shadow": false,
+        "focusable": false,
+        "additionalBrowserArgs": "--use-fake-ui-for-media-stream"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' https: http://localhost:* ws://localhost:*; img-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline';"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "languages": [
+          "SimpChinese"
+        ]
+      }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

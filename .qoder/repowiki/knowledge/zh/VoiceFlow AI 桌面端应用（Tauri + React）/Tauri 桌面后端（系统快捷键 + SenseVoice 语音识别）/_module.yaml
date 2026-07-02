@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: tauri_backend
+title: Tauri 桌面后端（系统快捷键 + SenseVoice 语音识别）
+scope:
+    - src-tauri/
+source_files: []
+depends_on: []
+related_to: []

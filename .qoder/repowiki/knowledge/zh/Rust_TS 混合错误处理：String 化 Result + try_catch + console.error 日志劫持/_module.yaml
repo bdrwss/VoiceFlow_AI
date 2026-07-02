@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: error_handling
+title: Rust/TS 混合错误处理：String 化 Result + try/catch + console.error 日志劫持
+scope: []
+source_files:
+    - src-tauri/src/lib.rs
+    - src-tauri/src/sensevoice.rs
+    - src/App.tsx
+    - src/hooks/useSettings.ts
+    - src/utils/api_asr.ts
+    - src/utils/whisper.ts
+depends_on: []
+related_to: []

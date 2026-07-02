@@ -1,0 +1,852 @@
+/* 全局重置与字体加载 */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+
+:root {
+  color-scheme: dark;
+  font-family: 'Outfit', 'Noto Sans SC', sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  
+  --bg-color: #0b0c10;
+  --panel-bg: rgba(22, 23, 34, 0.55);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-highlight: rgba(255, 255, 255, 0.12);
+  --text-main: #f3f4f6;
+  --text-muted: #9ca3af;
+  --accent-color: #7c3aed;
+  --accent-gradient: linear-gradient(135deg, #8b5cf6, #3b82f6);
+  --accent-glow: rgba(139, 92, 246, 0.4);
+  --red-neon: #ef4444;
+  --green-neon: #10b981;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  overflow: hidden;
+  height: 100vh;
+}
+
+#root {
+  height: 100%;
+}
+
+/* 主容器 */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background: radial-gradient(circle at 50% 0%, rgba(139, 92, 246, 0.18) 0%, rgba(11, 12, 16, 0.6) 70%), var(--bg-color);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1), 0 12px 40px rgba(0, 0, 0, 0.7);
+}
+
+/* 顶部导航 */
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  background: rgba(15, 16, 22, 0.45);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border-color);
+  z-index: 10;
+  -webkit-app-region: drag;
+}
+
+.logo-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  box-shadow: 0 0 10px var(--accent-color);
+  animation: pulse-glow 2s infinite;
+}
+
+.brand-title {
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 0.5px;
+  background: linear-gradient(90deg, #a78bfa, #60a5fa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.app-nav {
+  display: flex;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transform: scale(1);
+}
+
+.nav-item:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.nav-item.active {
+  color: var(--text-main);
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+  transform: scale(1.04);
+}
+
+/* 按钮点击瞬间弹性压缩回弹效果 */
+.nav-item:active {
+  transform: scale(0.88);
+  transition: transform 0.08s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* 悬停时图标微动 */
+.nav-item:hover svg {
+  transform: scale(1.08);
+  transition: transform 0.2s ease;
+}
+
+/* 激活时图标弹性 Bounce */
+.nav-item.active svg {
+  animation: nav-active-bounce 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes nav-active-bounce {
+  0% { transform: scale(0.6); }
+  65% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+/* 主内容区 */
+.app-main {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+/* 水平平移卡片总包装 */
+.tab-wrapper {
+  display: flex;
+  width: 300%;
+  height: 100%;
+  transition: transform 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* 单个 Tab 面板，独立纵向滚动，自带微弱缩放和淡入过渡 */
+.tab-pane {
+  width: 33.3333%;
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 20px;
+  opacity: 0.25;
+  transform: scale(0.98);
+  transition: opacity 0.45s cubic-bezier(0.25, 1, 0.5, 1), transform 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.tab-pane.active {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* 听写工作面板 */
+.main-pane {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+}
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 600px;
+  gap: 30px;
+}
+
+/* 模型初始化加载 */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+  gap: 15px;
+  padding: 30px;
+  background: var(--panel-bg);
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+}
+
+.loading-container h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.loading-container p {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.progress-bar-bg {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent-gradient);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #a78bfa;
+}
+
+/* 状态展示球 */
+.status-orb-container {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.orb-inner {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: rgba(25, 26, 38, 0.8);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.orb-glow {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  filter: blur(25px);
+  opacity: 0.3;
+  z-index: 1;
+  transition: all 0.4s ease;
+}
+
+/* 状态变化带来的 UI 动效 */
+.status-orb-container.recording .orb-inner {
+  border-color: var(--red-neon);
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+}
+
+.status-orb-container.recording .orb-glow {
+  background: var(--red-neon);
+  opacity: 0.7;
+  filter: blur(35px);
+}
+
+.status-orb-container.transcribing .orb-inner {
+  border-color: #3b82f6;
+}
+
+.status-orb-container.transcribing .orb-glow {
+  background: #3b82f6;
+  opacity: 0.5;
+}
+
+.status-orb-container.rewriting .orb-inner {
+  border-color: #10b981;
+}
+
+.status-orb-container.rewriting .orb-glow {
+  background: #10b981;
+  opacity: 0.5;
+}
+
+.status-orb-container.success .orb-inner {
+  border-color: var(--green-neon);
+  transform: scale(1.05);
+}
+
+.status-orb-container.success .orb-glow {
+  background: var(--green-neon);
+  opacity: 0.6;
+}
+
+.status-orb-container.error .orb-inner {
+  border-color: #f97316;
+}
+
+.status-orb-container.error .orb-glow {
+  background: #f97316;
+  opacity: 0.5;
+}
+
+/* 状态说明文本 */
+.status-text-banner {
+  text-align: center;
+}
+
+.status-text-banner h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.status-text-banner p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  max-width: 450px;
+  line-height: 1.4;
+}
+
+.error-sub {
+  color: #f97316 !important;
+  font-size: 0.85rem !important;
+  margin-top: 4px;
+}
+
+kbd {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  color: #fff;
+  box-shadow: 0 2px 0 rgba(0,0,0,0.3);
+}
+
+/* 文本双重预览面板 */
+.text-preview-card {
+  width: 100%;
+  background: var(--panel-bg);
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 8px 24px rgba(0, 0, 0, 0.2);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  backdrop-filter: blur(12px);
+}
+
+.preview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.preview-section.refined {
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  padding-top: 16px;
+}
+
+.section-header {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.section-body {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text-main);
+  background: rgba(0, 0, 0, 0.15);
+  padding: 10px 14px;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* 动效 */
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.6;
+    box-shadow: 0 0 8px var(--accent-color);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 16px var(--accent-color);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.spin-icon {
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.pulse-red {
+  animation: pulse-red-anim 1s infinite alternate;
+}
+
+@keyframes pulse-red-anim {
+  from {
+    color: #f87171;
+    transform: scale(0.95);
+  }
+  to {
+    color: #ef4444;
+    transform: scale(1.05);
+  }
+}
+
+/* 霓虹文字色彩 */
+.text-red { color: #f87171; }
+.text-blue { color: #60a5fa; }
+.text-green { color: #34d399; }
+.text-orange { color: #fb923c; }
+
+/* 自定义浏览器与容器滚动条 */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.5);
+}
+
+/* 强制原生 Select 下拉框选项背景色适配深色模式 */
+select option {
+  background-color: #161722 !important;
+  color: #f3f4f6 !important;
+}
+
+/* 窗口左侧控制按钮区 */
+.window-actions-left {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-right: 12px;
+  -webkit-app-region: no-drag;
+}
+
+.win-btn {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.win-btn:hover {
+  transform: scale(1.1);
+  filter: brightness(1.15);
+}
+
+.win-btn.close {
+  background: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.win-btn.minimize {
+  background: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+/* 极光动态声波容器 */
+.visualizer-container {
+  width: 100%;
+  height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.visualizer-container.visible {
+  height: 80px;
+  opacity: 1;
+  margin-bottom: -15px;
+}
+
+.audio-canvas {
+  width: 100%;
+  max-width: 450px;
+  height: 80px;
+  display: block;
+}
+
+/* 顶部麦克风录音中呼吸灯特效 */
+.pulse-red-icon {
+  animation: pulse-red-icon-anim 0.8s infinite alternate;
+  color: #ef4444 !important;
+}
+
+@keyframes pulse-red-icon-anim {
+  from {
+    transform: scale(0.95);
+    opacity: 0.65;
+  }
+  to {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+/* 灵动岛胶囊药丸浮窗 */
+.dynamic-island-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(18, 18, 24, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  border-radius: 20px;
+  padding: 6px 12px;
+  height: 38px;
+  box-sizing: border-box;
+  gap: 12px;
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+  margin: 15px auto;
+}
+
+/* 录音模式宽度较宽 */
+.dynamic-island-pill.recording {
+  min-width: 170px;
+}
+
+/* 识别/润色等处理状态收缩且文字居中 */
+.dynamic-island-pill.transcribing,
+.dynamic-island-pill.rewriting,
+.dynamic-island-pill.success,
+.dynamic-island-pill.error {
+  min-width: 115px;
+  justify-content: center;
+  gap: 0;
+  padding: 6px 18px;
+}
+
+/* 药丸小按钮 */
+.pill-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  -webkit-app-region: no-drag;
+}
+
+.pill-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-main);
+  transform: scale(1.08);
+}
+
+.pill-btn.cancel:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+.pill-btn.confirm:hover {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+
+/* 中间声波波动柱 */
+.pill-audio-wave {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3.5px;
+  height: 18px;
+}
+
+.wave-bar {
+  width: 3px;
+  background: var(--text-main);
+  border-radius: 1.5px;
+  display: inline-block;
+  transform-origin: center;
+  animation: pill-wave-anim 0.7s infinite ease-in-out alternate;
+}
+
+.bar-1 { height: 5px; animation-delay: 0.1s; }
+.bar-2 { height: 13px; animation-delay: 0.25s; }
+.bar-3 { height: 9px; animation-delay: 0.4s; }
+.bar-4 { height: 15px; animation-delay: 0.15s; }
+.bar-5 { height: 7px; animation-delay: 0.3s; }
+
+@keyframes pill-wave-anim {
+  from { transform: scaleY(0.45); }
+  to { transform: scaleY(1.35); }
+}
+
+/* 状态文字样式 */
+.pill-text {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-main);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.pill-text.text-green {
+  color: #34d399;
+}
+
+.pill-text.text-red {
+  color: #f87171;
+}
+
+/* 闲置态胶囊微调 */
+.dynamic-island-pill.idle {
+  min-width: 210px;
+  background: rgba(15, 16, 22, 0.82);
+  padding: 6px 12px 6px 12px;
+  border-radius: 18px;
+  gap: 8px;
+}
+
+/* 呼吸紫色发光小点 */
+.pill-pulse-logo {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #a78bfa;
+  box-shadow: 0 0 8px #7c3aed;
+  animation: pill-pulse-glow-anim 2s infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pill-pulse-glow-anim {
+  0%, 100% {
+    opacity: 0.5;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+    box-shadow: 0 0 12px #a78bfa;
+  }
+}
+
+.pill-text.hint {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: opacity 0.2s ease;
+}
+
+/* 鼠标移入小胶囊时才优雅浮现的两个微型切换图标 */
+.pill-actions-mini {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  opacity: 0;
+  max-width: 0;
+  overflow: hidden;
+  transition: opacity 0.25s ease, max-width 0.25s ease;
+}
+
+.dynamic-island-pill.idle:hover .pill-actions-mini {
+  opacity: 1;
+  max-width: 50px;
+}
+
+.mini-action-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  -webkit-app-region: no-drag;
+}
+
+.mini-action-btn:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(1.1);
+}
+
+/* 强制底漆透明以支持真透明悬浮小药丸 */
+html, body, #root {
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 独立指示小窗口容器 */
+.indicator-window-root {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.indicator-window-root .dynamic-island-pill {
+  margin: 0 !important; /* 独立小窗口内取消外边距 */
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.55);
+}
+
+/* --- Error Banner Styles --- */
+.error-banner {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 12px;
+  padding: 18px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(239, 68, 68, 0.05);
+  max-width: 90%;
+  animation: fade-in-up 0.3s ease-out forwards;
+}
+
+.error-banner h2 {
+  color: #f87171;
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.error-banner p {
+  color: #fca5a5;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  word-break: break-all;
+  margin: 0;
+}
+
+.error-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.btn-error-action {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-error-action:hover {
+  background: rgba(239, 68, 68, 0.25);
+  color: #fee2e2;
+  border-color: rgba(239, 68, 68, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+}
+
+.btn-error-action:active {
+  transform: scale(0.95);
+}
+
