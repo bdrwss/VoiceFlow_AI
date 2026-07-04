@@ -4,7 +4,7 @@ import "./SettingsPanel.css";
 import { Search, ChevronUp, ChevronDown, Download } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-
+import { useModal } from './ModalContext';
 interface SettingsPanelProps {
   settings: Settings;
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
@@ -28,8 +28,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [matches, setMatches] = useState<HTMLElement[]>([]);
+  const { showAlert, showConfirm } = useModal();
   const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [appVersion, setAppVersion] = useState("v1.0.5");
+
+  useEffect(() => {
+    import('@tauri-apps/api/app').then(({ getVersion }) => {
+      getVersion().then(v => setAppVersion('v' + v)).catch(console.error);
+    });
+  }, []);
 
   const [isDownloadingModel, setIsDownloadingModel] = useState(false);
   const [downloadStep, setDownloadStep] = useState("");
@@ -437,11 +445,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         <h3>关于与更新 (About & Updates)</h3>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
           <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1rem', fontWeight: 'bold', marginBottom: '5px' }}>VoiceFlow AI</p>
-          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginBottom: '15px' }}>当前版本: v1.0.0</p>
+          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginBottom: '15px' }}>当前版本: {appVersion}</p>
           
           <button 
             onClick={async (e) => {
               const btn = e.currentTarget;
+              const originalText = btn.innerText;
               btn.innerText = "正在检查...";
               btn.disabled = true;
               try {
@@ -449,7 +458,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 const update = await check();
                 
                 if (update) {
-                  if (confirm(`发现新版本: ${update.version}\n\n更新日志:\n${update.body}\n\n是否立即尝试自动更新？（若自动更新失败将提供备用下载链接）`)) {
+                  const shouldUpdate = await showConfirm(`发现新版本: ${update.version}\n\n更新日志:\n${update.body}\n\n是否立即尝试自动更新？（若自动更新失败将提供备用下载链接）`);
+                  if (shouldUpdate) {
                     btn.innerText = "正在下载并安装...";
                     let downloaded = 0;
                     let contentLength = 0;
@@ -477,10 +487,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     await relaunch();
                   }
                 } else {
-                  alert("当前已经是最新版本！");
+                  await showAlert("当前已经是最新版本！");
                 }
               } catch (err) {
-                alert("检查更新失败，可能是由于网络原因或尚未发布版本。\n" + err);
+                await showAlert("检查更新失败，可能是由于网络原因或尚未发布版本。\n" + err);
               } finally {
                 btn.innerText = originalText;
                 btn.disabled = false;
