@@ -1,0 +1,8 @@
+{
+  "name": "voiceflow-updater-proxy",
+  "version": "1.0.0",
+  "description": "Vercel proxy for private GitHub releases (VoiceFlow AI)",
+  "scripts": {
+    "start": "vercel dev"
+  }
+}

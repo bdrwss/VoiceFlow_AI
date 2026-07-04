@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "public": false,
+  "buildCommand": null,
+  "outputDirectory": null,
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ]
+}
