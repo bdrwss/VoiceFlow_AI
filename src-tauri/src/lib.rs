@@ -45,12 +45,26 @@ fn set_blacklist(state: State<'_, AppState>, blacklist: Vec<String>) -> Result<(
 #[tauri::command]
 fn simulate_typing(text: String) -> Result<(), String> {
     let mut enigo = Enigo::new();
+
+    // 强制释放可能卡住的修饰键，防止与输入法或系统快捷键冲突
+    enigo.key_up(Key::Control);
+    enigo.key_up(Key::Alt);
+    enigo.key_up(Key::Shift);
+    #[cfg(target_os = "macos")]
+    enigo.key_up(Key::Meta);
+
+    // 微小缓冲延时，给系统响应状态变化的时间
+    thread::sleep(Duration::from_millis(50));
+
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
 
     // 保存原剪贴板内容
     let original_clipboard = clipboard.get_text().unwrap_or_default();
 
     clipboard.set_text(text).map_err(|e| e.to_string())?;
+
+    // 给系统剪贴板一点时间同步（极度重要，防止粘贴出旧内容）
+    thread::sleep(Duration::from_millis(30));
 
     #[cfg(target_os = "macos")]
     {
@@ -78,6 +92,16 @@ fn simulate_typing(text: String) -> Result<(), String> {
 fn replace_with_ai_text(original_len: usize, new_text: String) -> Result<(), String> {
     let mut enigo = Enigo::new();
 
+    // 强制释放可能卡住的修饰键，防止与输入法或系统快捷键冲突
+    enigo.key_up(Key::Control);
+    enigo.key_up(Key::Alt);
+    enigo.key_up(Key::Shift);
+    #[cfg(target_os = "macos")]
+    enigo.key_up(Key::Meta);
+
+    // 微小缓冲延时
+    thread::sleep(Duration::from_millis(30));
+
     // 1. 选中刚刚打出的原文 (Shift + LeftArrow)
     // 使用全选覆盖的方式，速度更快且对 Ctrl+Z 撤销更友好
     if original_len > 0 {
@@ -97,6 +121,9 @@ fn replace_with_ai_text(original_len: usize, new_text: String) -> Result<(), Str
     let original_clipboard = clipboard.get_text().unwrap_or_default();
 
     clipboard.set_text(new_text).map_err(|e| e.to_string())?;
+
+    // 给系统剪贴板一点时间同步（极度重要，防止粘贴出旧内容）
+    thread::sleep(Duration::from_millis(30));
 
     // 模拟 Ctrl + V 粘贴（Windows/Linux 常用，Mac 为 Cmd + V）
     #[cfg(target_os = "macos")]
@@ -139,6 +166,16 @@ fn get_active_window_info() -> (Option<String>, Option<String>) {
         Ok(active_window) => (Some(active_window.app_name), Some(active_window.title)),
         Err(()) => (None, None),
     }
+}
+
+#[tauri::command]
+fn get_active_window_info_cmd() -> Result<KeyStatePayload, String> {
+    let (app_name, window_title) = get_active_window_info();
+    Ok(KeyStatePayload {
+        pressed: false,
+        app_name,
+        window_title,
+    })
 }
 
 // 全局按键监听线程 (使用 rdev 事件驱动)
@@ -220,6 +257,14 @@ pub fn run() {
     env_logger::init(); // 初始化日志
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
@@ -282,6 +327,7 @@ pub fn run() {
             set_blacklist,
             simulate_typing,
             replace_with_ai_text,
+            get_active_window_info_cmd,
             sensevoice::check_sensevoice_ready,
             sensevoice::download_sensevoice,
             sensevoice::force_redownload_sensevoice,

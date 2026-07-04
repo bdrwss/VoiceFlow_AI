@@ -1,8 +1,8 @@
 [package]
-name = "tauri-app"
-version = "0.1.9"
-description = "A Tauri App"
-authors = ["you"]
+name = "voiceflow-ai"
+version = "1.0.0"
+description = "VoiceFlow AI - Intelligent Voice Typing Assistant"
+authors = ["VoiceFlow"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -35,9 +35,12 @@ bzip2 = "0.6.1"
 zip = "8.6.0"
 futures-util = "0.3.32"
 tauri-plugin-fs = "2"
+tauri-plugin-clipboard-manager = "2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
 
 [profile.release]
 strip = true

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { History, ShieldCheck, Trash2, Copy, Trash, AlertTriangle } from "lucide-react";
+import { History, ShieldCheck, Trash2, Copy, Trash, AlertTriangle, RefreshCw, Sparkles } from "lucide-react";
 import "./HistoryPanel.css";
 import { HistoryItem } from '../hooks/useHistory';
 
@@ -8,7 +8,9 @@ interface HistoryPanelProps {
   deleteHistoryItem: (id: string) => void;
   clearHistory: () => void;
   copyToClipboard: (text: string, id: string) => void;
+  retryRefine?: (id: string, text: string, style: string) => Promise<void>;
   copiedId: string | null;
+  hasApiKey: boolean;
 }
 
 export const HistoryPanel: React.FC<HistoryPanelProps> = ({
@@ -16,9 +18,22 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
   deleteHistoryItem,
   clearHistory,
   copyToClipboard,
-  copiedId
+  retryRefine,
+  copiedId,
+  hasApiKey
 }) => {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+
+  const handleRetry = async (id: string, text: string, style: string) => {
+    if (!retryRefine) return;
+    setRetryingId(id);
+    try {
+      await retryRefine(id, text, style);
+    } finally {
+      setRetryingId(null);
+    }
+  };
 
   return (
     <div className="history-pane">
@@ -87,6 +102,22 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
               </div>
 
               <div className="card-actions">
+                {!item.success && hasApiKey && retryRefine && (
+                  <button 
+                    className="action-btn" 
+                    onClick={() => handleRetry(item.id, item.rawText, item.style)}
+                    disabled={retryingId === item.id}
+                  >
+                    {retryingId === item.id ? (
+                      <RefreshCw size={14} className="spin-icon text-blue" />
+                    ) : (
+                      <Sparkles size={14} className="text-blue" />
+                    )}
+                    <span style={{ color: retryingId === item.id ? '#60a5fa' : 'inherit' }}>
+                      {retryingId === item.id ? "润色中..." : "重新润色"}
+                    </span>
+                  </button>
+                )}
                 <button className="action-btn" onClick={() => copyToClipboard(item.refinedText || item.rawText, item.id)}>
                   <Copy size={14} />
                   <span>{copiedId === item.id ? "已复制" : "复制结果"}</span>

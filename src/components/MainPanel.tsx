@@ -13,6 +13,8 @@ interface MainPanelProps {
   setErrorMessage: (msg: string) => void;
   rawText: string;
   refinedText: string;
+  promptStyle?: string;
+  updateSetting?: any;
   retry?: () => void;
 }
 
@@ -28,8 +30,16 @@ export const MainPanel: React.FC<MainPanelProps> = ({
   setErrorMessage,
   rawText,
   refinedText,
+  promptStyle,
+  updateSetting,
   retry
 }) => {
+  const promptStyleLabels: Record<string, string> = {
+    natural: "口语",
+    formal: "正式",
+    concise: "简明",
+    academic: "学术"
+  };
   return (
     <div className="main-pane">
       {status === "initializing" && (
@@ -66,12 +76,35 @@ export const MainPanel: React.FC<MainPanelProps> = ({
           </div>
 
           {/* 大窗口下的极简就绪提示 banner */}
-          {status === "idle" && (
-            <div className="status-text-banner">
-              <h2>智能听写助手已在后台就绪</h2>
-              <p>请在任意地方，按住键盘右侧 <kbd>{listenKey}</kbd> 键说话即可</p>
-            </div>
-          )}
+          {/* 大窗口下的极简就绪提示 banner */}
+          <div className="status-text-banner" style={{ opacity: status === 'idle' || status === 'success' || status === 'error' ? 1 : 0.5, transition: 'opacity 0.3s' }}>
+            <h2>智能听写助手已在后台就绪</h2>
+            <p>请在任意地方，按住键盘右侧 <kbd>{listenKey}</kbd> 键说话即可</p>
+            
+            {/* 提示词风格快捷切换 */}
+            {updateSetting && promptStyle && (
+              <div style={{ marginTop: '24px', display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                {Object.entries(promptStyleLabels).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => updateSetting("promptStyle", key)}
+                    style={{
+                      padding: '6px 16px',
+                      borderRadius: '20px',
+                      border: `1px solid ${promptStyle === key ? '#60a5fa' : 'rgba(255,255,255,0.1)'}`,
+                      background: promptStyle === key ? 'rgba(96,165,250,0.15)' : 'rgba(255,255,255,0.05)',
+                      color: promptStyle === key ? '#60a5fa' : 'rgba(255,255,255,0.7)',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* 错误提示 banner */}
           {status === "error" && (
@@ -100,23 +133,33 @@ export const MainPanel: React.FC<MainPanelProps> = ({
           )}
 
           {/* 实时文本展示区 */}
-          {(rawText || refinedText) && (
+          {/* 实时文本展示区 */}
+          {(rawText || refinedText || status === 'recording' || status === 'transcribing' || status === 'rewriting') && (
             <div className="text-preview-card">
-              {rawText && (
-                <div className="preview-section">
-                  <div className="section-header">ASR 识别原文</div>
-                  <div className="section-body">{rawText}</div>
+              <div className="preview-section">
+                <div className="section-header">ASR 识别原文</div>
+                <div className="section-body">
+                  {rawText || (
+                    <span style={{ color: 'rgba(255,255,255,0.3)' }}>
+                      {status === 'recording' ? '正在聆听...' : (status === 'transcribing' ? '正在识别...' : '等待文本...')}
+                    </span>
+                  )}
                 </div>
-              )}
-              {refinedText && (
-                <div className="preview-section refined">
-                  <div className="section-header">
-                    <Sparkles size={14} className="text-blue" />
-                    <span>AI 优化文本</span>
-                  </div>
-                  <div className="section-body">{refinedText}</div>
+              </div>
+              
+              <div className="preview-section refined">
+                <div className="section-header">
+                  <Sparkles size={14} className="text-blue" />
+                  <span>AI 优化文本</span>
                 </div>
-              )}
+                <div className="section-body">
+                  {refinedText || (
+                    <span style={{ color: 'rgba(255,255,255,0.3)' }}>
+                      {status === 'rewriting' ? 'AI 润色中...' : '等待优化...'}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>

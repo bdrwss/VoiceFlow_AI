@@ -15,6 +15,9 @@ export interface Settings {
   asrApiKey: string;
   asrApiModel: string;
   blacklistStr: string;
+  hotWords: string;
+  typeMode: "simulate" | "clipboard";
+  autoStart: boolean;
 }
 
 const defaultSettings: Settings = {
@@ -30,7 +33,10 @@ const defaultSettings: Settings = {
   asrApiUrl: "https://api.groq.com/openai/v1/audio/transcriptions",
   asrApiKey: "",
   asrApiModel: "whisper-large-v3",
-  blacklistStr: "LOL.exe, csgo.exe, r5apex.exe, GenshinImpact.exe, dota2.exe"
+  blacklistStr: "LOL.exe, csgo.exe, r5apex.exe, GenshinImpact.exe, dota2.exe",
+  hotWords: "",
+  typeMode: "simulate",
+  autoStart: false
 };
 
 export function useSettings() {
@@ -58,6 +64,9 @@ export function useSettings() {
           asrApiKey: localStorage.getItem("vf_asr_api_key") || defaultSettings.asrApiKey,
           asrApiModel: localStorage.getItem("vf_asr_api_model") || defaultSettings.asrApiModel,
           blacklistStr: localStorage.getItem("vf_blacklist") || defaultSettings.blacklistStr,
+          hotWords: localStorage.getItem("vf_hot_words") || defaultSettings.hotWords,
+          typeMode: (localStorage.getItem("vf_type_mode") as "simulate" | "clipboard") || defaultSettings.typeMode,
+          autoStart: localStorage.getItem("vf_auto_start") === "true" || defaultSettings.autoStart,
         };
       }
     } catch (e) {
@@ -86,6 +95,23 @@ export function useSettings() {
   useEffect(() => {
     invoke("set_listen_key", { key: settings.listenKey }).catch(console.error);
   }, [settings.listenKey]);
+
+  // Sync autostart setting with OS
+  useEffect(() => {
+    const syncAutostart = async () => {
+      try {
+        const { enable, disable } = await import('@tauri-apps/plugin-autostart');
+        if (settings.autoStart) {
+          await enable();
+        } else {
+          await disable();
+        }
+      } catch (err) {
+        console.error("Failed to sync autostart", err);
+      }
+    };
+    syncAutostart();
+  }, [settings.autoStart]);
 
   return {
     settings,

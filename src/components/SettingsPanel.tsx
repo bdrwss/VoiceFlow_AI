@@ -183,7 +183,31 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       </div>
 
       <div className="settings-group">
+        <h3>打字与上屏模式 (Typing & Input)</h3>
+        
+        <div className="input-item">
+          <label>上屏模式</label>
+          <select value={settings.typeMode} onChange={(e) => updateSetting("typeMode", e.target.value as "simulate" | "clipboard")}>
+            <option value="simulate">自动上屏 (依赖模拟按键，推荐日常使用)</option>
+            <option value="clipboard">纯剪贴板模式 (仅复制不按键，完美绕过高权限/游戏反作弊拦截)</option>
+          </select>
+          <p className="input-tip">如果遇到在某些高权限软件或游戏中文字无法打出，请切换至纯剪贴板模式。</p>
+        </div>
+      </div>
+
+      <div className="settings-group">
         <h3>听写与优化偏好</h3>
+        
+        <div className="input-item">
+          <label>专有词汇 / 热词 (Hot Words)</label>
+          <input 
+            type="text" 
+            value={settings.hotWords} 
+            onChange={(e) => updateSetting("hotWords", e.target.value)} 
+            placeholder="例如：Tauri, Enigo, Vue, 降噪"
+          />
+          <p className="input-tip">使用逗号分隔，语音识别和大模型优化时会强制偏向这些专有词汇，大幅提升专业场景准确率。</p>
+        </div>
         
         <div className="input-item">
           <label>AI 优化风格</label>
@@ -259,6 +283,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <div className="input-tip" style={{ marginTop: '8px', lineHeight: '1.5', fontSize: '11px', color: 'rgba(255,255,255,0.45)' }}>
                 <span style={{ fontWeight: 'bold', color: 'rgba(255,255,255,0.65)' }}>各模型硬件配置推荐：</span>
                 <ul style={{ margin: '4px 0 0 0', paddingLeft: '16px' }}>
+                  <li style={{ color: '#34d399', marginBottom: '4px' }}><b>SenseVoice Small (~250MB)</b>: 极速多语言模型，基于底层引擎原生推理。任意配置均可秒级响应，强烈推荐首选。</li>
                   <li><b>tiny (75MB)</b>: 任意配置可用。2GB 内存以上。</li>
                   <li><b>base (140MB)</b>: 4核以上 CPU 或 Intel Xe/AMD 核显。4GB 内存以上。</li>
                   <li><b>small (460MB)</b>: 8核以上 CPU 或中端核显/独显。8GB 内存以上。</li>
@@ -407,6 +432,37 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       >
         {saveStatus === "saved" ? "✅ 设置已保存" : "保存配置"}
       </button>
+
+      <div style={{ marginTop: '30px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px', textAlign: 'center' }}>
+        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginBottom: '10px' }}>VoiceFlow AI v1.0.0</p>
+        <button 
+          onClick={async () => {
+            try {
+              const { check } = await import('@tauri-apps/plugin-updater');
+              const update = await check();
+              if (update) {
+                alert(`发现新版本: ${update.version}\n是否更新？（当前配置暂未生效，请待发布后体验）`);
+              } else {
+                alert("当前已经是最新版本");
+              }
+            } catch (err) {
+              alert("检查更新失败: " + err);
+            }
+          }}
+          style={{
+            background: 'transparent',
+            border: '1px solid rgba(255,255,255,0.2)',
+            color: '#fff',
+            padding: '6px 16px',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+            transition: 'all 0.2s'
+          }}
+        >
+          检查更新
+        </button>
+      </div>
     </div>
   );
 };

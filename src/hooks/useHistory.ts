@@ -44,6 +44,14 @@ export function useHistory() {
     });
   };
 
+  const updateHistoryItem = (id: string, updates: Partial<HistoryItem>) => {
+    setHistory((prev) => {
+      const next = prev.map(item => item.id === id ? { ...item, ...updates } : item);
+      saveHistory(next);
+      return next;
+    });
+  };
+
   const clearHistory = () => {
     setHistory([]);
     saveHistory([]);
@@ -59,6 +67,7 @@ export function useHistory() {
   return {
     history,
     addHistoryItem,
+    updateHistoryItem,
     deleteHistoryItem,
     clearHistory,
     copyToClipboard,

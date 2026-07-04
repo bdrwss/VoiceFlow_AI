@@ -4,6 +4,7 @@ export interface LLMConfig {
   model: string;
   promptStyle: string; // "formal" | "concise" | "academic" | "natural"
   appName?: string;
+  hotWords?: string;
 }
 
 const STYLE_PROMPTS: Record<string, string> = {
@@ -30,35 +31,64 @@ export async function refineText(text: string, config: LLMConfig): Promise<strin
       systemPrompt += " [系统注入: 检测到用户正在编程IDE中，如果用户涉及代码逻辑描述，请使用准确的技术术语并保留英文；如果是伪代码请直接输出。]";
     }
   }
+
+  if (config.hotWords && config.hotWords.trim()) {
+    systemPrompt += ` [系统强制指令: 用户设置了以下专有词库/热词：【${config.hotWords}】。如果识别文本中存在同音、近音词或可能是上述热词的拼写错误，请务必将其纠正为上述热词，优先使用这些专业术语。]`;
+  }
   const url = `${config.baseUrl.replace(/\/$/, "")}/chat/completions`;
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${config.apiKey}`
-    },
-    body: JSON.stringify({
-      model: config.model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `原始识别文本为：\n"""\n${text}\n"""` }
-      ],
-      temperature: 0.3,
-      max_tokens: 1000
-    })
-  });
+  const MAX_RETRIES = 2;
+  const TIMEOUT_MS = 15000;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`LLM 接口请求失败 (${response.status}): ${errorText}`);
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${config.apiKey}`
+        },
+        body: JSON.stringify({
+          model: config.model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `原始识别文本为：\n"""\n${text}\n"""` }
+          ],
+          temperature: 0.3,
+          max_tokens: 1000
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`LLM 接口请求失败 (${response.status}): ${errorText}`);
+      }
+
+      const data = await response.json();
+      const refined = data.choices?.[0]?.message?.content;
+      if (!refined) {
+        throw new Error("LLM 接口返回了空数据或格式不正确。");
+      }
+
+      return refined.trim();
+    } catch (e: any) {
+      clearTimeout(timeoutId);
+      const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout');
+      console.error(`AI 润色第 ${attempt + 1} 次尝试失败:`, e.message || e);
+      
+      if (attempt === MAX_RETRIES) {
+        throw new Error(`AI 润色失败 (已重试 ${MAX_RETRIES} 次): ${isTimeout ? '请求超时' : e.message}`);
+      }
+      // 等待 1 秒后重试
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
   }
-
-  const data = await response.json();
-  const refined = data.choices?.[0]?.message?.content;
-  if (!refined) {
-    throw new Error("LLM 接口返回了空数据或格式不正确。");
-  }
-
-  return refined.trim();
+  
+  throw new Error("AI 润色失败");
 }

@@ -453,7 +453,7 @@ pub async fn force_redownload_sensevoice(app_handle: AppHandle) -> Result<(), St
     if sherpa_dir.exists() {
         let _ = fs::remove_dir_all(&sherpa_dir);
     }
-    
+
     download_sensevoice(app_handle).await
 }
 
@@ -473,10 +473,7 @@ pub async fn transcribe_sensevoice(
         .join(path_from_slash(ENGINE_READY_FILE));
 
     if !exe_path.exists() {
-        return Err(format!(
-            "sherpa-onnx 引擎未找到: {}",
-            exe_path.display()
-        ));
+        return Err(format!("sherpa-onnx 引擎未找到: {}", exe_path.display()));
     }
 
     let (model_dir, model_file) = find_ready_model(&sherpa_dir)
@@ -546,7 +543,7 @@ fn extract_sensevoice_text(raw: &str) -> String {
             // 简单 JSON text 字段提取
             if let Some(start) = trimmed.find("\"text\"") {
                 let after_key = &trimmed[start + 6..]; // skip "text"
-                // 找到冒号后的引号内容
+                                                       // 找到冒号后的引号内容
                 if let Some(colon_pos) = after_key.find(':') {
                     let after_colon = after_key[colon_pos + 1..].trim();
                     if after_colon.starts_with('"') {
@@ -587,10 +584,7 @@ fn extract_sensevoice_text(raw: &str) -> String {
                     // 可能是 "start_time end_time text" 或 "start -- end text"
                     let rest = if parts[1] == "--" {
                         // "0.00 -- 3.50 text" 格式
-                        trimmed
-                            .splitn(4, ' ')
-                            .nth(3)
-                            .unwrap_or("")
+                        trimmed.splitn(4, ' ').nth(3).unwrap_or("")
                     } else if parts[1].parse::<f64>().is_ok() {
                         // "0.0 3.5 text" 格式
                         parts[2]
@@ -617,7 +611,10 @@ fn extract_sensevoice_text(raw: &str) -> String {
             continue;
         }
         // 跳过纯数字/时间戳行
-        if trimmed.chars().all(|c| c.is_ascii_digit() || c == '.' || c == ' ' || c == '-') {
+        if trimmed
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '.' || c == ' ' || c == '-')
+        {
             continue;
         }
         // 跳过 log 关键词行
