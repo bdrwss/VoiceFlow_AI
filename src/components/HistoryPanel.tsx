@@ -1,5 +1,5 @@
-import React from 'react';
-import { History, ShieldCheck, Trash2, Copy, Trash } from "lucide-react";
+import React, { useState } from 'react';
+import { History, ShieldCheck, Trash2, Copy, Trash, AlertTriangle } from "lucide-react";
 import "./HistoryPanel.css";
 import { HistoryItem } from '../hooks/useHistory';
 
@@ -18,6 +18,8 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
   copyToClipboard,
   copiedId
 }) => {
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
   return (
     <div className="history-pane">
       <div className="history-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -25,7 +27,7 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
         {history.length > 0 && (
           <button 
             className="action-btn text-red-hover" 
-            onClick={clearHistory}
+            onClick={() => setShowClearConfirm(true)}
             style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)' }}
           >
             <Trash size={14} />
@@ -95,6 +97,23 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Custom Confirm Modal for Clearing History */}
+      {showClearConfirm && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <AlertTriangle color="#f59e0b" size={24} />
+              <h4>清空历史记录</h4>
+            </div>
+            <p>确定要清空所有听写与优化记录吗？此操作无法恢复。</p>
+            <div className="modal-actions">
+              <button className="btn-cancel" onClick={() => setShowClearConfirm(false)}>取消</button>
+              <button className="btn-danger" onClick={() => { clearHistory(); setShowClearConfirm(false); }}>确定清空</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

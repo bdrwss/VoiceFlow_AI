@@ -45,10 +45,8 @@ export function useHistory() {
   };
 
   const clearHistory = () => {
-    if (confirm("确定要清空所有历史记录吗？")) {
-      setHistory([]);
-      saveHistory([]);
-    }
+    setHistory([]);
+    saveHistory([]);
   };
 
   const copyToClipboard = (text: string, id: string) => {

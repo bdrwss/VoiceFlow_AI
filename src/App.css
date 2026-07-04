@@ -87,6 +87,7 @@ body {
   letter-spacing: 0.5px;
   background: linear-gradient(90deg, #a78bfa, #60a5fa);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -183,11 +184,13 @@ body {
 .main-pane {
   display: flex;
   justify-content: center;
-  align-items: center;
-  height: 100%;
+  min-height: 100%;
+  padding: 40px 0;
+  box-sizing: border-box;
 }
 
 .workspace {
+  margin: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -199,6 +202,7 @@ body {
 
 /* 模型初始化加载 */
 .loading-container {
+  margin: auto;
   display: flex;
   flex-direction: column;
   align-items: center;

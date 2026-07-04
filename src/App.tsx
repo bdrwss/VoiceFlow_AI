@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, currentMonitor, PhysicalPosition } from "@tauri-apps/api/window";
+import { LogicalSize } from "@tauri-apps/api/dpi";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
 import { transcribeAudioApi } from "./utils/api_asr";
@@ -77,6 +78,7 @@ function App() {
   const isRecordingRef = useRef(false);
   const recorderRef = useRef<AudioRecorder | null>(null);
   const activeAppRef = useRef<string>("");
+  const recordingTimeoutRef = useRef<number | null>(null);
 
   const [rawText, setRawText] = useState("");
   const [refinedText, setRefinedText] = useState("");
@@ -239,19 +241,62 @@ function App() {
     invoke("set_blacklist", { blacklist: list }).catch(console.error);
   }, [settings.blacklistStr]);
 
-  // 初始启动时，等待加载完毕后自动隐藏主窗口
+  // 初始化时等待动画后隐藏主窗口
   const isInitialBootRef = useRef(true);
   useEffect(() => {
     if (status === "idle" && isInitialBootRef.current) {
       isInitialBootRef.current = false;
       if (windowLabel === "main") {
-        // 给用户1.5秒钟时间看清“后台就绪”的提示，然后收起到托盘
+        // 给用户1.5秒时间看“后台已就绪”然后隐藏
         setTimeout(() => {
           getCurrentWindow().hide().catch(console.error);
         }, 1500);
       }
     }
   }, [status, windowLabel]);
+
+  // 当历史记录变化，或状态恢复空闲时，更新展示文本
+  useEffect(() => {
+    if (status === "idle" || status === "success" || status === "error") {
+      if (history.length === 0) {
+        setRawText("这是一款智能语音听写助手。只需按住快捷键说话，松开后，它就会自动将你的口语转化为流畅的书面文本。");
+        setRefinedText("");
+      } else {
+        setRawText(history[0].rawText);
+        setRefinedText(history[0].refinedText);
+      }
+    }
+  }, [history, status]);
+
+  // 监听听写界面内容高度，自动调整窗口高度
+  useEffect(() => {
+    if (windowLabel !== "main") return;
+
+    if (activeTab === "main") {
+      const observer = new ResizeObserver((entries) => {
+        for (let entry of entries) {
+          const contentHeight = entry.borderBoxSize?.[0]?.blockSize || entry.contentRect.height;
+          // 加上顶部导航栏高度(48) + main-pane上下padding(80) + 一点缓冲
+          let desiredHeight = contentHeight + 140;
+          
+          if (desiredHeight < 350) desiredHeight = 350;
+          if (desiredHeight > 800) desiredHeight = 800;
+
+          getCurrentWindow().setSize(new LogicalSize(520, desiredHeight)).catch(console.error);
+        }
+      });
+
+      // 我们监听 main-pane 内部的主容器（可能是 workspace 或者是 loading-container）
+      const workspaceEl = document.querySelector('.main-pane > div');
+      if (workspaceEl) {
+        observer.observe(workspaceEl);
+      }
+
+      return () => {
+        observer.disconnect();
+      };
+    }
+  }, [activeTab, rawText, refinedText, status, windowLabel]);
 
   // 监听 Rust 全局快捷键状态
   useEffect(() => {
@@ -386,13 +431,20 @@ function App() {
       lastTypedLengthRef.current = 0;
       isChunkProcessingRef.current = false;
 
-      // 如果不是 API 流式引擎（即使用本地模型如 SenseVoice/Whisper），在目标窗口打出占位符给用户反馈
-      if (settings.asrEngine !== 'api') {
-        const placeholder = "[正在录音...]";
-        await invoke("simulate_typing", { text: placeholder });
-        lastTypedLengthRef.current = placeholder.length;
-        setRawText(placeholder);
+      if (recordingTimeoutRef.current !== null) {
+        window.clearTimeout(recordingTimeoutRef.current);
       }
+      recordingTimeoutRef.current = window.setTimeout(() => {
+        if (isRecordingRef.current) {
+          console.warn("录音达到 5 分钟上限，自动停止");
+          setErrorMessage("录音已达 5 分钟上限，正在为您自动转写");
+          if (stopAndProcessRef.current) {
+            stopAndProcessRef.current();
+          }
+        }
+      }, 5 * 60 * 1000);
+
+      // 如果不是 API 流式引擎（即使用本地模型如 SenseVoice/Whisper），原本在目标窗口打出占位符的功能已删除
 
       const onChunk = settings.asrEngine === 'api' ? async (chunk: Float32Array) => {
         if (isChunkProcessingRef.current || !isRecordingRef.current) return;
@@ -429,6 +481,10 @@ function App() {
     } catch (err: any) {
       console.error("麦克风启动抛出异常:", err);
       isRecordingRef.current = false;
+      if (recordingTimeoutRef.current !== null) {
+        window.clearTimeout(recordingTimeoutRef.current);
+        recordingTimeoutRef.current = null;
+      }
       setErrorMessage("无法启动麦克风：" + err.message);
       setStatus("error");
     }
@@ -439,6 +495,11 @@ function App() {
     if (recorderRef.current && isRecordingRef.current) {
       recorderRef.current.stop();
       isRecordingRef.current = false;
+      
+      if (recordingTimeoutRef.current !== null) {
+        window.clearTimeout(recordingTimeoutRef.current);
+        recordingTimeoutRef.current = null;
+      }
       
       // 取消时，清除之前打出的占位符
       if (lastTypedLengthRef.current > 0) {
@@ -466,18 +527,28 @@ function App() {
       return;
     }
     isRecordingRef.current = false;
+    if (recordingTimeoutRef.current !== null) {
+      window.clearTimeout(recordingTimeoutRef.current);
+      recordingTimeoutRef.current = null;
+    }
     setStatus("transcribing");
 
-    if (settings.asrEngine !== 'api' && lastTypedLengthRef.current > 0) {
-      // 替换为正在转写的占位符
-      const transcribingPlaceholder = "[正在加载模型并转写...]";
-      await invoke("replace_with_ai_text", {
-        originalLen: lastTypedLengthRef.current,
-        newText: transcribingPlaceholder
-      });
-      lastTypedLengthRef.current = transcribingPlaceholder.length;
-      setRawText(transcribingPlaceholder);
-    }
+    // 辅助函数：清除目标窗口中残留的占位符文本
+    const clearPlaceholder = async () => {
+      if (lastTypedLengthRef.current > 0) {
+        try {
+          await invoke("replace_with_ai_text", {
+            originalLen: lastTypedLengthRef.current,
+            newText: ""
+          });
+        } catch (e) {
+          console.error("清除占位符失败:", e);
+        }
+        lastTypedLengthRef.current = 0;
+      }
+    };
+
+    // 如果不是 API 流式引擎，原本替换为正在转写的占位符的功能已删除
 
     try {
       // 1. 获取录音音频 data
@@ -492,6 +563,7 @@ function App() {
 
       if (audioData.length === 0) {
         console.warn("VAD 拦截：全静音");
+        await clearPlaceholder();
         setErrorMessage("麦克风收音音量过低 (未检测到人声)，请靠近麦克风或大声点。");
         setStatus("error");
         return; 
@@ -499,6 +571,7 @@ function App() {
 
       if (maxVal < 0.01) {
         console.warn("麦克风收音音量过低，最大振幅:", maxVal);
+        await clearPlaceholder();
         setErrorMessage("麦克风收音音量过低 (没有声音)，请靠近麦克风或大声点。");
         setStatus("error");
         return; 
@@ -519,26 +592,16 @@ function App() {
         const dataDirPath = await appDataDir();
         const wavPath = await join(dataDirPath, "temp_sensevoice.wav");
         
-        await writeFile(wavPath, wavBytes);
-        
         try {
-          const rawStdout: string = await invoke("transcribe_sensevoice", { audioPath: wavPath });
-          console.log("SenseVoice Output:", rawStdout);
-          
-          // sherpa-onnx output often contains lines of logs, but the recognized text is usually at the end.
-          // Or it outputs JSON. Let's just strip known bad prefixes if any, or find the json.
-          // If it's pure text, we just use the last non-empty line or try to regex match it.
-          const match = rawStdout.match(/\{.*"text"\s*:\s*"([^"]+)".*\}/);
-          if (match && match[1]) {
-             text = match[1];
-          } else {
-             // Fallback to taking the last line if not JSON
-             const lines = rawStdout.trim().split('\n');
-             text = lines[lines.length - 1] || "";
-          }
-        } catch (e) {
+          await writeFile(wavPath, wavBytes);
+          const rawResult: string = await invoke("transcribe_sensevoice", { audioPath: wavPath });
+          console.log("SenseVoice Result:", rawResult);
+          // Rust 端已完成输出解析和 SenseVoice token 清洗，直接使用
+          text = rawResult.trim();
+        } catch (e: any) {
           console.error("SenseVoice error:", e);
-          setErrorMessage("SenseVoice 推理出错，可能需要重新下载模型。");
+          await clearPlaceholder();
+          setErrorMessage("SenseVoice 推理出错：" + (e.message || e));
           setStatus("error");
           return;
         }
@@ -554,6 +617,7 @@ function App() {
       const cleanText = text.trim();
       
       if (!cleanText) {
+        await clearPlaceholder();
         setErrorMessage("没有检测到有效说话声，请重试。");
         setStatus("idle");
         return;
@@ -634,6 +698,7 @@ function App() {
 
     } catch (err: any) {
       console.error(err);
+      await clearPlaceholder();
       setErrorMessage("识别出错：" + (err.message || err));
       setStatus("idle");
     }

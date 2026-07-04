@@ -443,6 +443,21 @@ pub async fn download_sensevoice(app_handle: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn force_redownload_sensevoice(app_handle: AppHandle) -> Result<(), String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+    let sherpa_dir = app_data_dir.join("sherpa-onnx");
+
+    if sherpa_dir.exists() {
+        let _ = fs::remove_dir_all(&sherpa_dir);
+    }
+    
+    download_sensevoice(app_handle).await
+}
+
+#[tauri::command]
 pub async fn transcribe_sensevoice(
     app_handle: AppHandle,
     audio_path: String,
@@ -456,20 +471,217 @@ pub async fn transcribe_sensevoice(
     let exe_path = sherpa_dir
         .join(ENGINE_DIR)
         .join(path_from_slash(ENGINE_READY_FILE));
+
+    if !exe_path.exists() {
+        return Err(format!(
+            "sherpa-onnx 引擎未找到: {}",
+            exe_path.display()
+        ));
+    }
+
     let (model_dir, model_file) = find_ready_model(&sherpa_dir)
-        .ok_or_else(|| "SenseVoice Small model is not downloaded".to_string())?;
+        .ok_or_else(|| "SenseVoice Small 模型未下载，请在设置中切换回来重新加载".to_string())?;
 
     let model_path = model_dir.join(model_file);
     let tokens_path = model_dir.join("tokens.txt");
 
-    let output = std::process::Command::new(exe_path)
+    println!(
+        "SenseVoice transcribe: exe={}, model={}, tokens={}, audio={}",
+        exe_path.display(),
+        model_path.display(),
+        tokens_path.display(),
+        &audio_path
+    );
+
+    let output = std::process::Command::new(&exe_path)
         .arg(format!("--sense-voice-model={}", model_path.display()))
         .arg(format!("--tokens={}", tokens_path.display()))
+        .arg(format!("--num-threads={}", 4))
         .arg(&audio_path)
         .output()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("启动 sherpa-onnx 进程失败: {}", e))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 
-    Ok(stdout.into_owned())
+    println!("SenseVoice stdout: [{}]", stdout);
+    if !stderr.is_empty() {
+        println!("SenseVoice stderr: [{}]", stderr);
+    }
+
+    if !output.status.success() {
+        return Err(format!(
+            "sherpa-onnx 推理失败 (exit code {:?}): {}",
+            output.status.code(),
+            if stderr.is_empty() { &stdout } else { &stderr }
+        ));
+    }
+
+    // 从 stdout 和 stderr 合并内容中提取识别文本
+    // sherpa-onnx 不同版本/构建可能将结果输出到 stdout 或 stderr
+    let combined = format!("{}\n{}", stdout, stderr);
+    let text = extract_sensevoice_text(&combined);
+
+    println!("SenseVoice extracted text: [{}]", text);
+
+    if text.is_empty() {
+        return Err(format!(
+            "SenseVoice 未能识别出文字。\nstdout: {}\nstderr: {}",
+            stdout.trim(),
+            stderr.trim()
+        ));
+    }
+
+    Ok(text)
+}
+
+/// 从 sherpa-onnx 输出中提取 SenseVoice 识别的纯文本
+/// 支持多种输出格式：JSON、带时间戳的行、纯文本行
+fn extract_sensevoice_text(raw: &str) -> String {
+    // 策略1：尝试从 JSON 格式提取 {"text": "..."}
+    // sherpa-onnx 某些版本输出 JSON 行
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('{') && trimmed.contains("\"text\"") {
+            // 简单 JSON text 字段提取
+            if let Some(start) = trimmed.find("\"text\"") {
+                let after_key = &trimmed[start + 6..]; // skip "text"
+                // 找到冒号后的引号内容
+                if let Some(colon_pos) = after_key.find(':') {
+                    let after_colon = after_key[colon_pos + 1..].trim();
+                    if after_colon.starts_with('"') {
+                        let content = &after_colon[1..];
+                        if let Some(end_quote) = content.find('"') {
+                            let text_value = &content[..end_quote];
+                            let cleaned = strip_sensevoice_tokens(text_value);
+                            if !cleaned.is_empty() {
+                                return cleaned;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 策略2：查找包含 SenseVoice 特殊 token 的行 (<|...|>)
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.contains("<|") && trimmed.contains("|>") {
+            let cleaned = strip_sensevoice_tokens(trimmed);
+            if !cleaned.is_empty() {
+                return cleaned;
+            }
+        }
+    }
+
+    // 策略3：查找带有时间戳格式的行 (如 "0.00 -- 3.50 text")
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        // 匹配类似 "0.00 -- 3.50 你好世界" 或 "0.0 3.5 你好世界" 格式
+        if trimmed.len() > 10 {
+            // 尝试跳过开头的数字和时间戳部分
+            let parts: Vec<&str> = trimmed.splitn(3, ' ').collect();
+            if parts.len() >= 3 {
+                if parts[0].parse::<f64>().is_ok() {
+                    // 可能是 "start_time end_time text" 或 "start -- end text"
+                    let rest = if parts[1] == "--" {
+                        // "0.00 -- 3.50 text" 格式
+                        trimmed
+                            .splitn(4, ' ')
+                            .nth(3)
+                            .unwrap_or("")
+                    } else if parts[1].parse::<f64>().is_ok() {
+                        // "0.0 3.5 text" 格式
+                        parts[2]
+                    } else {
+                        ""
+                    };
+                    let cleaned = strip_sensevoice_tokens(rest);
+                    if !cleaned.is_empty() {
+                        return cleaned;
+                    }
+                }
+            }
+        }
+    }
+
+    // 策略4：取最后一行非空非路径非纯数字的内容
+    for line in raw.lines().rev() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // 跳过文件路径行
+        if trimmed.contains(":\\") || trimmed.starts_with('/') {
+            continue;
+        }
+        // 跳过纯数字/时间戳行
+        if trimmed.chars().all(|c| c.is_ascii_digit() || c == '.' || c == ' ' || c == '-') {
+            continue;
+        }
+        // 跳过 log 关键词行
+        if trimmed.starts_with("duration")
+            || trimmed.starts_with("0-th")
+            || trimmed.starts_with("Elapsed")
+            || trimmed.starts_with("num_")
+            || trimmed.starts_with("Real time")
+        {
+            continue;
+        }
+        let cleaned = strip_sensevoice_tokens(trimmed);
+        if !cleaned.is_empty() {
+            return cleaned;
+        }
+    }
+
+    String::new()
+}
+
+/// 移除 SenseVoice 输出中的特殊 token，如 <|zh|><|NEUTRAL|><|Speech|><|woitn|>
+fn strip_sensevoice_tokens(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+
+    while let Some(&ch) = chars.peek() {
+        if ch == '<' {
+            // 检查是否是 <|...|> 格式的 token
+            let mut token = String::new();
+            let mut is_token = false;
+            let mut temp_chars = chars.clone();
+            temp_chars.next(); // skip '<'
+            token.push('<');
+
+            if temp_chars.peek() == Some(&'|') {
+                token.push('|');
+                temp_chars.next();
+                // 读取直到 |>
+                let mut found_end = false;
+                for c in temp_chars.by_ref() {
+                    token.push(c);
+                    if c == '>' && token.ends_with("|>") {
+                        found_end = true;
+                        break;
+                    }
+                }
+                if found_end {
+                    is_token = true;
+                    // 跳过 token 的所有字符
+                    for _ in 0..token.len() {
+                        chars.next();
+                    }
+                }
+            }
+
+            if !is_token {
+                result.push(ch);
+                chars.next();
+            }
+        } else {
+            result.push(ch);
+            chars.next();
+        }
+    }
+
+    result.trim().to_string()
 }

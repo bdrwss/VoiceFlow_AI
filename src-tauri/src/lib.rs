@@ -78,12 +78,16 @@ fn simulate_typing(text: String) -> Result<(), String> {
 fn replace_with_ai_text(original_len: usize, new_text: String) -> Result<(), String> {
     let mut enigo = Enigo::new();
 
-    // 1. 发送 Backspace 删除刚刚打出的原文
-    // 优化：使用 Backspace 逐字删除，比 Shift+LeftArrow 选中更稳定，不容易受输入法或应用快捷键干扰
-    for _ in 0..original_len {
-        enigo.key_click(Key::Backspace);
-        // 添加极其短暂的延迟，确保应用能处理每个退格
-        thread::sleep(Duration::from_millis(2));
+    // 1. 选中刚刚打出的原文 (Shift + LeftArrow)
+    // 使用全选覆盖的方式，速度更快且对 Ctrl+Z 撤销更友好
+    if original_len > 0 {
+        enigo.key_down(Key::Shift);
+        for _ in 0..original_len {
+            enigo.key_click(Key::LeftArrow);
+        }
+        enigo.key_up(Key::Shift);
+        // 给系统一点时间反应选中文本
+        thread::sleep(Duration::from_millis(20));
     }
 
     // 2. 将 AI 优化后的文本复制到剪贴板并粘贴，瞬时替换
@@ -216,6 +220,7 @@ pub fn run() {
     env_logger::init(); // 初始化日志
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
@@ -279,6 +284,7 @@ pub fn run() {
             replace_with_ai_text,
             sensevoice::check_sensevoice_ready,
             sensevoice::download_sensevoice,
+            sensevoice::force_redownload_sensevoice,
             sensevoice::transcribe_sensevoice
         ])
         .run(tauri::generate_context!())

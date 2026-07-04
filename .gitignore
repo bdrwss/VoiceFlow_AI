@@ -25,3 +25,6 @@ dist-ssr
 
 # Rust Build Targets
 src-tauri/target
+
+# Cargo local config
+src-tauri/.cargo/config.toml

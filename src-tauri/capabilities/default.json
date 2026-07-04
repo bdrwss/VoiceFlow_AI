@@ -13,6 +13,10 @@
     "core:window:allow-close",
     "core:window:allow-set-focus",
     "core:event:default",
-    "core:webview:default"
+    "core:webview:default",
+    "fs:default",
+    "fs:allow-appdata-write",
+    "fs:allow-appdata-read",
+    "core:window:allow-set-size"
   ]
 }

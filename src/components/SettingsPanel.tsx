@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Settings } from '../hooks/useSettings';
 import "./SettingsPanel.css";
-import { Search, ChevronUp, ChevronDown } from 'lucide-react';
+import { Search, ChevronUp, ChevronDown, Download } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 interface SettingsPanelProps {
   settings: Settings;
@@ -28,6 +30,40 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [matches, setMatches] = useState<HTMLElement[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const [isDownloadingModel, setIsDownloadingModel] = useState(false);
+  const [downloadStep, setDownloadStep] = useState("");
+  const [downloadProgress, setDownloadProgress] = useState(0);
+
+  const forceRedownloadSenseVoice = async () => {
+    if (isDownloadingModel) return;
+    setIsDownloadingModel(true);
+    setDownloadStep("准备重新下载 SenseVoice 模型...");
+    setDownloadProgress(0);
+    
+    let unlisten: (() => void) | undefined;
+    try {
+      unlisten = await listen("download-progress", (event: any) => {
+        const { step, progress } = event.payload;
+        setDownloadStep(step);
+        setDownloadProgress(Math.round(progress * 100));
+      });
+      await invoke("force_redownload_sensevoice");
+      setDownloadStep("下载完成，已准备就绪！");
+      setDownloadProgress(100);
+      setTimeout(() => {
+        setIsDownloadingModel(false);
+      }, 3000);
+    } catch (e: any) {
+      console.error(e);
+      setDownloadStep(`下载失败: ${e.message || e}`);
+      setIsDownloadingModel(false);
+    } finally {
+      if (unlisten) {
+        unlisten();
+      }
+    }
+  };
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -229,6 +265,39 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   <li><b>medium (1.5GB)</b>: 16核以上高性能 CPU 或 NVIDIA/AMD 独显。16GB 内存以上（若在低算力设备运行可能产生 5~10 秒推理延迟）。</li>
                 </ul>
                 <p style={{ margin: '6px 0 0 0', color: 'rgba(255,255,255,0.35)' }}>首次切换并保存设置后，系统将自动在后台下载对应权重（仅需下载一次）。</p>
+                {settings.whisperModel === "sensevoice-small" && (
+                  <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'rgba(255,255,255,0.8)' }}>SenseVoice 模型状态</span>
+                      <button 
+                        onClick={forceRedownloadSenseVoice} 
+                        disabled={isDownloadingModel}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '6px',
+                          background: 'rgba(52, 211, 153, 0.1)', border: '1px solid rgba(52, 211, 153, 0.3)', color: '#34d399',
+                          padding: '4px 10px', borderRadius: '4px', cursor: isDownloadingModel ? 'not-allowed' : 'pointer', fontSize: '11px'
+                        }}
+                      >
+                        <Download size={12} />
+                        {isDownloadingModel ? '正在下载...' : '强制重新下载'}
+                      </button>
+                    </div>
+                    {isDownloadingModel && (
+                      <div style={{ marginTop: '10px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#9ca3af', marginBottom: '4px' }}>
+                          <span>{downloadStep}</span>
+                          <span>{downloadProgress}%</span>
+                        </div>
+                        <div style={{ height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${downloadProgress}%`, background: '#34d399', transition: 'width 0.3s' }}></div>
+                        </div>
+                      </div>
+                    )}
+                    {!isDownloadingModel && downloadStep === "下载完成，已准备就绪！" && (
+                      <div style={{ marginTop: '6px', fontSize: '11px', color: '#34d399' }}>✅ 模型已成功更新</div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
