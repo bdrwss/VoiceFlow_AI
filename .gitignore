@@ -54,3 +54,11 @@ src-tauri/.cargo/config.toml
 
 # Tauri signing keys
 .tauri
+
+# IDE and AI configs
+.agents/
+.qoder/
+.vscode/
+
+# Private design docs
+*VoiceFlow*AI*.md
