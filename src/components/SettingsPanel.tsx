@@ -442,14 +442,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <button 
             onClick={async (e) => {
               const btn = e.currentTarget;
-              const originalText = btn.innerText;
+              btn.innerText = "正在检查...";
+              btn.disabled = true;
               try {
-                btn.innerText = "正在检查...";
-                btn.disabled = true;
                 const { check } = await import('@tauri-apps/plugin-updater');
                 const update = await check();
+                
                 if (update) {
-                  if (confirm(`发现新版本: ${update.version}\n\n更新日志:\n${update.body}\n\n是否立即下载并安装？`)) {
+                  if (confirm(`发现新版本: ${update.version}\n\n更新日志:\n${update.body}\n\n是否立即尝试自动更新？（若自动更新失败将提供备用下载链接）`)) {
                     btn.innerText = "正在下载并安装...";
                     let downloaded = 0;
                     let contentLength = 0;
