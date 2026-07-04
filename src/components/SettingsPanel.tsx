@@ -433,35 +433,68 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         {saveStatus === "saved" ? "✅ 设置已保存" : "保存配置"}
       </button>
 
-      <div style={{ marginTop: '30px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px', textAlign: 'center' }}>
-        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginBottom: '10px' }}>VoiceFlow AI v1.0.0</p>
-        <button 
-          onClick={async () => {
-            try {
-              const { check } = await import('@tauri-apps/plugin-updater');
-              const update = await check();
-              if (update) {
-                alert(`发现新版本: ${update.version}\n是否更新？（当前配置暂未生效，请待发布后体验）`);
-              } else {
-                alert("当前已经是最新版本");
+      <div className="settings-group" style={{ marginTop: '30px' }}>
+        <h3>关于与更新 (About & Updates)</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+          <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1rem', fontWeight: 'bold', marginBottom: '5px' }}>VoiceFlow AI</p>
+          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginBottom: '15px' }}>当前版本: v1.0.0</p>
+          
+          <button 
+            onClick={async (e) => {
+              const btn = e.currentTarget;
+              const originalText = btn.innerText;
+              try {
+                btn.innerText = "正在检查...";
+                btn.disabled = true;
+                const { check } = await import('@tauri-apps/plugin-updater');
+                const update = await check();
+                if (update) {
+                  if (confirm(`发现新版本: ${update.version}\n\n更新日志:\n${update.body}\n\n是否立即下载并安装？`)) {
+                    btn.innerText = "正在下载并安装...";
+                    await update.downloadAndInstall((event) => {
+                      switch (event.event) {
+                        case 'Started':
+                          btn.innerText = `下载中... (0%)`;
+                          break;
+                        case 'Progress':
+                          if (event.data.contentLength) {
+                            const percent = Math.round((event.data.chunkLength / event.data.contentLength) * 100);
+                            btn.innerText = `下载中... (${percent}%)`;
+                          }
+                          break;
+                        case 'Finished':
+                          btn.innerText = "下载完成，准备重启";
+                          break;
+                      }
+                    });
+                    const { relaunch } = await import('@tauri-apps/plugin-process');
+                    await relaunch();
+                  }
+                } else {
+                  alert("当前已经是最新版本！");
+                }
+              } catch (err) {
+                alert("检查更新失败，可能是由于网络原因或尚未发布版本。\n" + err);
+              } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
               }
-            } catch (err) {
-              alert("检查更新失败: " + err);
-            }
-          }}
-          style={{
-            background: 'transparent',
-            border: '1px solid rgba(255,255,255,0.2)',
-            color: '#fff',
-            padding: '6px 16px',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '0.85rem',
-            transition: 'all 0.2s'
-          }}
-        >
-          检查更新
-        </button>
+            }}
+            style={{
+              background: 'rgba(52, 211, 153, 0.1)',
+              border: '1px solid rgba(52, 211, 153, 0.3)',
+              color: '#34d399',
+              padding: '8px 20px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+              transition: 'all 0.2s',
+              fontWeight: 'bold'
+            }}
+          >
+            检查更新
+          </button>
+        </div>
       </div>
     </div>
   );
