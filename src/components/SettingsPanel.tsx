@@ -451,15 +451,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 if (update) {
                   if (confirm(`发现新版本: ${update.version}\n\n更新日志:\n${update.body}\n\n是否立即下载并安装？`)) {
                     btn.innerText = "正在下载并安装...";
+                    let downloaded = 0;
+                    let contentLength = 0;
                     await update.downloadAndInstall((event) => {
                       switch (event.event) {
                         case 'Started':
+                          contentLength = event.data.contentLength || 0;
                           btn.innerText = `下载中... (0%)`;
                           break;
                         case 'Progress':
-                          if (event.data.contentLength) {
-                            const percent = Math.round((event.data.chunkLength / event.data.contentLength) * 100);
+                          downloaded += event.data.chunkLength;
+                          if (contentLength > 0) {
+                            const percent = Math.round((downloaded / contentLength) * 100);
                             btn.innerText = `下载中... (${percent}%)`;
+                          } else {
+                            btn.innerText = `下载中... (${(downloaded / 1024 / 1024).toFixed(1)}MB)`;
                           }
                           break;
                         case 'Finished':
