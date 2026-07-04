@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { History, ShieldCheck, Trash2, Copy, Trash, AlertTriangle, RefreshCw, Sparkles } from "lucide-react";
+import { History, ShieldCheck, Trash2, Copy, Trash, RefreshCw, Sparkles } from "lucide-react";
 import "./HistoryPanel.css";
 import { HistoryItem } from '../hooks/useHistory';
 import { useModal } from './ModalContext';
