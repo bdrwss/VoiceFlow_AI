@@ -14,6 +14,7 @@ use tauri::{
 };
 
 mod sensevoice;
+mod audio_manager;
 
 // 全局监听键配置与黑名单配置
 struct AppState {
@@ -79,8 +80,8 @@ fn simulate_typing(text: String) -> Result<(), String> {
         enigo.key_up(Key::Control);
     }
 
-    // 给系统一点时间处理粘贴事件
-    thread::sleep(Duration::from_millis(50));
+    // 给系统一点时间处理粘贴事件 (由 50ms 延长至 200ms，防止部分慢速应用读取到已被恢复的旧剪贴板)
+    thread::sleep(Duration::from_millis(200));
 
     // 恢复原剪贴板内容
     let _ = clipboard.set_text(original_clipboard);
@@ -139,8 +140,8 @@ fn replace_with_ai_text(original_len: usize, new_text: String) -> Result<(), Str
         enigo.key_up(Key::Control);
     }
 
-    // 给系统一点时间处理粘贴事件
-    thread::sleep(Duration::from_millis(50));
+    // 给系统一点时间处理粘贴事件 (由 50ms 延长至 200ms，防止部分慢速应用读取到已被恢复的旧剪贴板)
+    thread::sleep(Duration::from_millis(200));
 
     // 恢复原剪贴板内容
     let _ = clipboard.set_text(original_clipboard);
@@ -272,6 +273,7 @@ pub fn run() {
             listen_key: RwLock::new("RControl".to_string()),
             blacklist: RwLock::new(vec![]),
         })
+        .manage(audio_manager::AudioState::new())
         .setup(|app| {
             let quit_i = MenuItem::with_id(app, "quit", "完全退出", true, None::<&str>)?;
             let show_i = MenuItem::with_id(app, "show", "唤出控制面板", true, None::<&str>)?;
@@ -331,7 +333,9 @@ pub fn run() {
             sensevoice::check_sensevoice_ready,
             sensevoice::download_sensevoice,
             sensevoice::force_redownload_sensevoice,
-            sensevoice::transcribe_sensevoice
+            sensevoice::transcribe_sensevoice,
+            audio_manager::duck_system_audio,
+            audio_manager::restore_system_audio
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

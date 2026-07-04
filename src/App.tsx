@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, currentMonitor, PhysicalPosition } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { appDataDir, join } from "@tauri-apps/api/path";
 import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
 import { transcribeAudioApi } from "./utils/api_asr";
 import { 
@@ -474,6 +475,8 @@ function App() {
       if (recordingTimeoutRef.current !== null) {
         window.clearTimeout(recordingTimeoutRef.current);
       }
+      invoke("duck_system_audio").catch((e) => console.error("Failed to duck audio", e));
+
       recordingTimeoutRef.current = window.setTimeout(() => {
         if (isRecordingRef.current) {
           console.warn("录音达到 5 分钟上限，自动停止");
@@ -562,6 +565,7 @@ function App() {
         window.clearTimeout(recordingTimeoutRef.current);
         recordingTimeoutRef.current = null;
       }
+      invoke("restore_system_audio").catch((e) => console.error("Failed to restore audio", e));
       
       // 取消时，清除之前打出的占位符
       if (lastTypedLengthRef.current > 0) {
@@ -598,6 +602,7 @@ function App() {
       window.clearTimeout(recordingTimeoutRef.current);
       recordingTimeoutRef.current = null;
     }
+    invoke("restore_system_audio").catch((e) => console.error("Failed to restore audio", e));
     setStatus("transcribing");
 
     // 辅助函数：清除目标窗口中残留的占位符文本

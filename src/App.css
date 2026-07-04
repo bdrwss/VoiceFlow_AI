@@ -588,6 +588,8 @@ select option {
   overflow: hidden;
   transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
   margin: 15px auto;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 /* 录音模式宽度较宽 */
@@ -674,6 +676,8 @@ select option {
   color: var(--text-main);
   letter-spacing: 0.5px;
   white-space: nowrap;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .pill-text.text-green {

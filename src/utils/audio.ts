@@ -66,10 +66,14 @@ export class AudioRecorder {
       }
     };
 
-    // 音频图：source -> analyser -> processor -> destination
+    // 音频图：source -> analyser -> processor -> gain(0) -> destination
+    // 必须经过一个 gain 值为 0 的节点再连接 destination，否则麦克风声音会从扬声器直接播放出来产生回声死循环
+    const muteGain = this.audioContext.createGain();
+    muteGain.gain.value = 0;
     this.source.connect(this.analyser);
     this.analyser.connect(this.processor);
-    this.processor.connect(this.audioContext.destination);
+    this.processor.connect(muteGain);
+    muteGain.connect(this.audioContext.destination);
   }
 
   getAnalyser(): AnalyserNode | null {

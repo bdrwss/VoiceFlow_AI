@@ -1,9 +1,0 @@
-[2026-07-03 00:48:12] [connect] WebSocket Connection 127.0.0.1:59086 v13 "" / 101
-[2026-07-03 00:48:12] [error] handle_read_frame error: asio.system:10054 (远程主机强迫关闭了一个现有的连接。)
-[2026-07-03 00:48:12] [disconnect] Disconnect close local:[1006,远程主机强迫关闭了一个现有的连接。] remote:[1006]
-[2026-07-03 00:48:20] [connect] WebSocket Connection 127.0.0.1:59101 v13 "" / 101
-[2026-07-03 00:48:20] [warning] got non-close frame while closing
-[2026-07-03 00:48:20] [disconnect] Disconnect close local:[1009,Max utterance length is configured to 300 seconds, received length is 6.04786e-05 seconds. Payload is too large!] remote:[1006]
-[2026-07-03 00:48:20] [warning] got frame in state closed
-[2026-07-03 00:48:20] [error] handle_read_frame error: asio.system:10058 (由于以前的关闭调用，套接字在那个方向已经关闭，发送或接收数据的请求没有被接受。)
-[2026-07-03 00:48:52] [connect] WebSocket Connection 127.0.0.1:59176 v13 "" / 101
