@@ -54,7 +54,7 @@
     }
   },
   "bundle": {
-    "active": true,
+    "active": true, "createUpdaterArtifacts": true,
     "targets": "all",
     "windows": {
       "nsis": {
