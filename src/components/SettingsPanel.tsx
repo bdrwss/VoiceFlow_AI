@@ -536,13 +536,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <p style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '12px' }}>如果您由于网络限制无法通过“检查更新”按钮完成自动更新，您可以随时点击下方链接获取最新安装包：</p>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button 
-                onClick={async () => { const { open } = await import('@tauri-apps/plugin-opener'); open('https://pan.baidu.com/s/1_F4xAr_5XHxnRxtHKdNO1w?pwd=hzdp'); }}
+                onClick={async () => { const { openUrl } = await import('@tauri-apps/plugin-opener'); openUrl('https://pan.baidu.com/s/1_F4xAr_5XHxnRxtHKdNO1w?pwd=hzdp'); }}
                 style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#60a5fa', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
               >
                 百度网盘 (提取码: hzdp)
               </button>
               <button 
-                onClick={async () => { const { open } = await import('@tauri-apps/plugin-opener'); open('https://github.com/bdrwss/VoiceFlow_AI/releases'); }}
+                onClick={async () => { const { openUrl } = await import('@tauri-apps/plugin-opener'); openUrl('https://github.com/bdrwss/VoiceFlow_AI/releases'); }}
                 style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#d1d5db', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
               >
                 GitHub 发布页
