@@ -524,7 +524,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ textAlign: 'left' }}>
               <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: '1.1rem', fontWeight: 'bold', margin: 0, marginBottom: '4px' }}>VoiceFlow AI</p>
-              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', margin: 0 }}>当前版本: v{appVersion}</p>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', margin: 0 }}>当前版本: {appVersion}</p>
             </div>
             <div style={{ padding: '4px 10px', background: 'rgba(255, 255, 255, 0.05)', color: 'rgba(255, 255, 255, 0.6)', borderRadius: '6px', fontSize: '0.8rem', border: '1px solid rgba(255,255,255,0.1)' }}>
               稳定版
