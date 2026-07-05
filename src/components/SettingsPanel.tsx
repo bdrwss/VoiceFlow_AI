@@ -490,7 +490,30 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   await showAlert("当前已经是最新版本！");
                 }
               } catch (err) {
-                await showAlert("检查更新失败，可能是由于网络原因或尚未发布版本。\n" + err);
+                try {
+                  const { open } = await import('@tauri-apps/plugin-shell');
+                  const fallbackUi = (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', textAlign: 'left' }}>
+                      <p>自动更新失败，可能是由于国内网络原因导致无法连接 GitHub 下载更新包。</p>
+                      <p style={{ fontSize: '0.85em', color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '6px', borderRadius: '4px', wordBreak: 'break-all' }}>错误信息: {String(err)}</p>
+                      <div style={{ marginTop: '10px', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '6px' }}>
+                        <p style={{ marginBottom: '10px', fontWeight: 'bold', color: '#f3f4f6' }}>📦 半自动云盘备用更新通道：</p>
+                        <p style={{ fontSize: '0.85em', color: '#9ca3af', marginBottom: '8px' }}>请点击下方链接，在浏览器中手动下载最新版安装包进行覆盖安装：</p>
+                        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <li>
+                            <button onClick={() => open('https://pan.baidu.com/s/1_F4xAr_5XHxnRxtHKdNO1w?pwd=hzdp')} style={{ background: 'none', border: 'none', color: '#3b82f6', textDecoration: 'underline', cursor: 'pointer', padding: 0, fontSize: '0.95rem' }}>👉 百度网盘下载 (提取码: hzdp)</button>
+                          </li>
+                          <li>
+                            <button onClick={() => open('https://github.com/bdrwss/VoiceFlow_AI/releases')} style={{ background: 'none', border: 'none', color: '#3b82f6', textDecoration: 'underline', cursor: 'pointer', padding: 0, fontSize: '0.95rem' }}>👉 GitHub Releases 官方备用下载</button>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  );
+                  await showAlert({ title: "网络连接异常", message: fallbackUi });
+                } catch (fallbackErr) {
+                  await showAlert("检查更新失败，网络异常。\n" + err);
+                }
               } finally {
                 btn.innerText = originalText;
                 btn.disabled = false;
