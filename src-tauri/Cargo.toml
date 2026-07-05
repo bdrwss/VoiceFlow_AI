@@ -1,6 +1,6 @@
 [package]
 name = "voiceflow-ai"
-version = "1.0.12"
+version = "1.0.13"
 description = "VoiceFlow AI - Intelligent Voice Typing Assistant"
 authors = ["VoiceFlow"]
 edition = "2021"
