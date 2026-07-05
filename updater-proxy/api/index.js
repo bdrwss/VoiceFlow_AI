@@ -21,7 +21,7 @@ export default async function handler(req, res) {
 
   try {
     // 1. Fetch latest release info
-    const releaseRes = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers });
+    const releaseRes = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers, cache: 'no-store' });
     if (!releaseRes.ok) throw new Error(`GitHub API error: ${releaseRes.status} ${releaseRes.statusText}`);
     const release = await releaseRes.json();
 
@@ -30,7 +30,7 @@ export default async function handler(req, res) {
     if (!latestJsonAsset) throw new Error('latest.json not found. Available assets: ' + release.assets.map(a => a.name).join(', '));
 
     // 3. Download latest.json content
-    const assetRes = await fetch(latestJsonAsset.url, {
+    const assetRes = await fetch(latestJsonAsset.url, { cache: 'no-store',
       headers: { ...headers, 'Accept': 'application/octet-stream' }
     });
     if (!assetRes.ok) throw new Error(`Failed to download latest.json: ${assetRes.status}`);
