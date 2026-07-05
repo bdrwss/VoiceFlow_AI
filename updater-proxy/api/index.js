@@ -27,7 +27,7 @@ export default async function handler(req, res) {
 
     // 2. Find latest.json asset
     const latestJsonAsset = release.assets.find(a => a.name === 'latest.json');
-    if (!latestJsonAsset) throw new Error('latest.json not found in the latest release');
+    if (!latestJsonAsset) throw new Error('latest.json not found. Available assets: ' + release.assets.map(a => a.name).join(', '));
 
     // 3. Download latest.json content
     const assetRes = await fetch(latestJsonAsset.url, {
