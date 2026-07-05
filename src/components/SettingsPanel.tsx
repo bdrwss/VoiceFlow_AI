@@ -442,11 +442,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       </button>
 
       <div className="settings-group" style={{ marginTop: '30px' }}>
-        <h3>关于与更新 (About & Updates)</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
-          <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1rem', fontWeight: 'bold', marginBottom: '5px' }}>VoiceFlow AI</p>
-          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginBottom: '15px' }}>当前版本: {appVersion}</p>
-          
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <h3 style={{ margin: 0 }}>关于与更新 (About & Updates)</h3>
           <button 
             onClick={async (e) => {
               const btn = e.currentTarget;
@@ -491,26 +488,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 }
               } catch (err) {
                 try {
-                  const { open } = await import('@tauri-apps/plugin-shell');
                   const fallbackUi = (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', textAlign: 'left' }}>
-                      <p>自动更新失败，可能是由于国内网络原因导致无法连接 GitHub 下载更新包。</p>
+                      <p>自动更新失败，可能是由于网络原因导致无法连接 GitHub 下载更新包。</p>
                       <p style={{ fontSize: '0.85em', color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '6px', borderRadius: '4px', wordBreak: 'break-all' }}>错误信息: {String(err)}</p>
-                      <div style={{ marginTop: '10px', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '6px' }}>
-                        <p style={{ marginBottom: '10px', fontWeight: 'bold', color: '#f3f4f6' }}>📦 半自动云盘备用更新通道：</p>
-                        <p style={{ fontSize: '0.85em', color: '#9ca3af', marginBottom: '8px' }}>请点击下方链接，在浏览器中手动下载最新版安装包进行覆盖安装：</p>
-                        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          <li>
-                            <button onClick={() => open('https://pan.baidu.com/s/1_F4xAr_5XHxnRxtHKdNO1w?pwd=hzdp')} style={{ background: 'none', border: 'none', color: '#3b82f6', textDecoration: 'underline', cursor: 'pointer', padding: 0, fontSize: '0.95rem' }}>👉 百度网盘下载 (提取码: hzdp)</button>
-                          </li>
-                          <li>
-                            <button onClick={() => open('https://github.com/bdrwss/VoiceFlow_AI/releases')} style={{ background: 'none', border: 'none', color: '#3b82f6', textDecoration: 'underline', cursor: 'pointer', padding: 0, fontSize: '0.95rem' }}>👉 GitHub Releases 官方备用下载</button>
-                          </li>
-                        </ul>
-                      </div>
                     </div>
                   );
-                  await showAlert({ title: "网络连接异常", message: fallbackUi });
+                  await showAlert({ title: "自动更新失败", message: fallbackUi });
                 } catch (fallbackErr) {
                   await showAlert("检查更新失败，网络异常。\n" + err);
                 }
@@ -523,16 +507,48 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               background: 'rgba(52, 211, 153, 0.1)',
               border: '1px solid rgba(52, 211, 153, 0.3)',
               color: '#34d399',
-              padding: '8px 20px',
+              padding: '6px 14px',
               borderRadius: '6px',
               cursor: 'pointer',
-              fontSize: '0.9rem',
+              fontSize: '0.85rem',
               transition: 'all 0.2s',
-              fontWeight: 'bold'
+              fontWeight: 'bold',
+              whiteSpace: 'nowrap'
             }}
           >
             检查更新
           </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ textAlign: 'left' }}>
+              <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: '1.1rem', fontWeight: 'bold', margin: 0, marginBottom: '4px' }}>VoiceFlow AI</p>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', margin: 0 }}>当前版本: v{appVersion}</p>
+            </div>
+            <div style={{ padding: '4px 10px', background: 'rgba(255, 255, 255, 0.05)', color: 'rgba(255, 255, 255, 0.6)', borderRadius: '6px', fontSize: '0.8rem', border: '1px solid rgba(255,255,255,0.1)' }}>
+              稳定版
+            </div>
+          </div>
+          
+          <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.05)', textAlign: 'left' }}>
+            <p style={{ fontSize: '0.9rem', color: '#f3f4f6', marginBottom: '8px', fontWeight: 'bold' }}>📦 备用下载通道 (手动更新)</p>
+            <p style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '12px' }}>如果您由于网络限制无法通过“检查更新”按钮完成自动更新，您可以随时点击下方链接获取最新安装包：</p>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button 
+                onClick={async () => { const { open } = await import('@tauri-apps/plugin-opener'); open('https://pan.baidu.com/s/1_F4xAr_5XHxnRxtHKdNO1w?pwd=hzdp'); }}
+                style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#60a5fa', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                百度网盘 (提取码: hzdp)
+              </button>
+              <button 
+                onClick={async () => { const { open } = await import('@tauri-apps/plugin-opener'); open('https://github.com/bdrwss/VoiceFlow_AI/releases'); }}
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#d1d5db', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                GitHub 发布页
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
