@@ -28,6 +28,7 @@ import { useHistory } from "./hooks/useHistory";
 import { MainPanel } from "./components/MainPanel";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { AutoUpdater } from "./components/AutoUpdater";
 
 function App() {
   const [logs, setLogs] = useState<string[]>([]);
@@ -930,6 +931,7 @@ function App() {
   // 主窗口渲染
   return (
     <div className="app-container">
+      <AutoUpdater />
       {/* 头部拖拽区与导航 */}
       <header data-tauri-drag-region className="app-header">
         <div className="window-actions-left">
