@@ -1019,9 +1019,6 @@ function App() {
             <SettingsPanel
               settings={settings}
               updateSetting={updateSetting}
-              saveSettings={saveSettings}
-              saveStatus={saveStatus}
-              isDirty={isDirty}
               logs={logs}
               setLogs={setLogs}
               autostartEnabled={autostartEnabled}
@@ -1031,6 +1028,28 @@ function App() {
 
         </div>
       </main>
+
+      <button 
+        className={`save-btn ${saveStatus === "saved" ? "saved-active" : ""}`} 
+        onClick={saveSettings} 
+        style={{ 
+          position: 'fixed',
+          bottom: '30px',
+          right: '30px',
+          zIndex: 9999,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          opacity: (activeTab === 'settings' && (isDirty || saveStatus === "saved")) ? 1 : 0,
+          pointerEvents: (activeTab === 'settings' && (isDirty || saveStatus === "saved")) ? 'auto' : 'none',
+          transform: (activeTab === 'settings' && (isDirty || saveStatus === "saved")) ? 'translateY(0)' : 'translateY(20px)',
+          transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+          backgroundColor: saveStatus === "saved" ? 'rgba(52, 211, 153, 0.2)' : undefined,
+          borderColor: saveStatus === "saved" ? 'rgba(52, 211, 153, 0.4)' : undefined,
+          color: saveStatus === "saved" ? '#34d399' : undefined
+        }}
+      >
+        {saveStatus === "saved" ? "✅ 设置已保存" : "保存配置"}
+      </button>
+
     </div>
   );
 }
