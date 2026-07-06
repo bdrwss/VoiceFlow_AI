@@ -15,6 +15,7 @@ use tauri::{
 
 mod sensevoice;
 mod audio_manager;
+mod screenshot;
 
 // 全局监听键配置与黑名单配置
 struct AppState {
@@ -259,6 +260,7 @@ pub fn run() {
     env_logger::init(); // 初始化日志
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
@@ -278,8 +280,10 @@ pub fn run() {
         .manage(audio_manager::AudioState::new())
         .setup(|app| {
             let quit_i = MenuItem::with_id(app, "quit", "完全退出", true, None::<&str>)?;
-            let show_i = MenuItem::with_id(app, "show", "唤出控制面板", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+            let show_i = MenuItem::with_id(app, "show", "唤出主界面", true, None::<&str>)?;
+            let history_i = MenuItem::with_id(app, "history", "历史记录", true, None::<&str>)?;
+            let settings_i = MenuItem::with_id(app, "settings", "偏好设置", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_i, &history_i, &settings_i, &quit_i])?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
@@ -289,10 +293,11 @@ pub fn run() {
                     "quit" => {
                         std::process::exit(0);
                     }
-                    "show" => {
+                    "show" | "history" | "settings" => {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
+                            let _ = app.emit(event.id.as_ref(), ());
                         }
                     }
                     _ => {}
@@ -332,6 +337,7 @@ pub fn run() {
             simulate_typing,
             replace_with_ai_text,
             get_active_window_info_cmd,
+            screenshot::capture_screen,
             sensevoice::check_sensevoice_ready,
             sensevoice::download_sensevoice,
             sensevoice::force_redownload_sensevoice,

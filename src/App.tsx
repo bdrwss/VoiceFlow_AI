@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, currentMonitor, PhysicalPosition } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
@@ -32,6 +33,7 @@ import { SetupWizard } from "./components/SetupWizard";
 
 function App() {
   const [logs, setLogs] = useState<string[]>([]);
+  const { t } = useTranslation();
 
   // 劫持 console 打印
   useEffect(() => {
@@ -121,17 +123,31 @@ function App() {
   const toggleAutostart = async () => {
     try {
       if (autostartEnabled) {
-        await disable();
+        await disable().catch(e => console.warn("disable autostart failed (normal in dev):", e));
         setAutostartEnabled(false);
+        updateSetting('autoStart', false);
       } else {
-        await enable();
+        await enable().catch(e => console.warn("enable autostart failed (normal in dev):", e));
         setAutostartEnabled(true);
+        updateSetting('autoStart', true);
       }
     } catch (e) {
       console.error("Failed to toggle autostart:", e);
     }
   };
 
+  // 监听来自系统托盘的菜单点击事件
+  useEffect(() => {
+    const unlistenShow = listen('show', () => setActiveTab('main'));
+    const unlistenHistory = listen('history', () => setActiveTab('history'));
+    const unlistenSettings = listen('settings', () => setActiveTab('settings'));
+
+    return () => {
+      unlistenShow.then(f => f());
+      unlistenHistory.then(f => f());
+      unlistenSettings.then(f => f());
+    };
+  }, []);
 
   // 同步状态至独立浮空胶囊窗口并统一管控其显隐与自适应定位
   useEffect(() => {
@@ -806,7 +822,7 @@ function App() {
       }
 
       // 如果未配置 AI 密钥或关闭了 AI 优化，则跳过 AI 润色，作为纯听写工具直接成功录入
-      if (!settings.apiKey.trim() || !settings.enableOptimization) {
+      if ((!settings.apiKey.trim() && settings.llmProvider !== "ollama") || !settings.enableOptimization) {
         addHistoryItem({ id: Math.random().toString(36).substr(2, 9), timestamp: Date.now(), rawText: finalText, refinedText: finalText, style: settings.promptStyle, success: false });
         setStatus("success");
         setTimeout(() => {
@@ -815,18 +831,35 @@ function App() {
         return;
       }
 
+      // 3.5 屏幕感知截图 (Screen-Aware)
+      let screenshotBase64: string | undefined = undefined;
+      if (settings.enableScreenCapture) {
+        try {
+          console.log(`正在获取屏幕截图 (模式: ${settings.screenCaptureMode})...`);
+          screenshotBase64 = await invoke<string>("capture_screen", { mode: settings.screenCaptureMode });
+          console.log("屏幕截图获取成功，大小: ", screenshotBase64.length);
+        } catch (err: any) {
+          console.warn("屏幕感知截图失败，将降级为纯文本润色:", err);
+          // 不中断主流程，静默降级
+        }
+      }
+
       // 4. 开始 AI 润色
       setStatus("rewriting");
 
+      const currentPromptPreset = settings.customPrompts?.find(p => p.id === settings.promptStyle);
       const llmConfig: LLMConfig = { 
         apiKey: settings.apiKey, 
         baseUrl: settings.baseUrl, 
         model: settings.modelName, 
         promptStyle: settings.promptStyle, 
+        customPromptText: currentPromptPreset?.prompt,
         appName: activeAppRef.current,
         hotWords: settings.hotWords,
         temperature: settings.temperature,
-        maxTokens: settings.maxTokens
+        maxTokens: settings.maxTokens,
+        isLocal: settings.llmProvider === "ollama",
+        screenshotBase64
       };
       
       try {
@@ -876,20 +909,26 @@ function App() {
     }
   };
 
-  const retryRefine = async (id: string, text: string, style: string) => {
-    if (!settings.apiKey) return;
+  const retryRefine = async (item: { id: string; rawText: string; style: string }) => {
+    if (!settings.apiKey && settings.llmProvider !== "ollama") return;
+    
+    // Look up the prompt text using the item's saved style id
+    const currentPromptPreset = settings.customPrompts?.find(p => p.id === item.style);
+    
     const llmConfig: LLMConfig = { 
       apiKey: settings.apiKey, 
       baseUrl: settings.baseUrl, 
       model: settings.modelName, 
-      promptStyle: style, 
+      promptStyle: item.style, 
+      customPromptText: currentPromptPreset?.prompt,
       appName: activeAppRef.current,
       temperature: settings.temperature,
-      maxTokens: settings.maxTokens
+      maxTokens: settings.maxTokens,
+      isLocal: settings.llmProvider === "ollama"
     };
     
-    const refined = await refineText(text, llmConfig);
-    updateHistoryItem(id, { refinedText: refined, success: true });
+    const refined = await refineText(item.rawText, llmConfig);
+    updateHistoryItem(item.id, { refinedText: refined, success: true });
     
     // 自动复制到剪贴板
     try {
@@ -899,18 +938,11 @@ function App() {
     }
   };
 
-  const promptStyleLabels: Record<string, string> = {
-    natural: "口语",
-    formal: "正式",
-    concise: "简明",
-    academic: "学术"
-  };
-  const promptStyleKeys = Object.keys(promptStyleLabels);
-  
   const cyclePromptStyle = () => {
-    const currentIndex = promptStyleKeys.indexOf(settings.promptStyle);
-    const nextIndex = (currentIndex + 1) % promptStyleKeys.length;
-    updateSetting("promptStyle", promptStyleKeys[nextIndex]);
+    if (!settings.customPrompts || settings.customPrompts.length === 0) return;
+    const currentIndex = settings.customPrompts.findIndex(p => p.id === settings.promptStyle);
+    const nextIndex = (currentIndex + 1) % settings.customPrompts.length;
+    updateSetting("promptStyle", settings.customPrompts[nextIndex].id);
   };
 
   // 如果是小药丸窗口，渲染特殊 UI
@@ -964,7 +996,7 @@ function App() {
             userSelect: 'none'
           }}
         >
-          {promptStyleLabels[settings.promptStyle] || "口语"}
+          {settings.customPrompts?.find(p => p.id === settings.promptStyle)?.name?.slice(0, 4) || "默认"}
         </div>
       </div>
     );
@@ -1034,6 +1066,7 @@ function App() {
               rawText={rawText}
               refinedText={refinedText}
               promptStyle={settings.promptStyle}
+              customPrompts={settings.customPrompts}
               updateSetting={updateSetting}
               retry={() => setRetryKey(k => k + 1)}
             />
@@ -1059,7 +1092,6 @@ function App() {
               updateSetting={updateSetting}
               logs={logs}
               setLogs={setLogs}
-              autostartEnabled={autostartEnabled}
               toggleAutostart={toggleAutostart}
             />
           </div>
@@ -1085,7 +1117,7 @@ function App() {
           color: saveStatus === "saved" ? '#34d399' : undefined
         }}
       >
-        {saveStatus === "saved" ? "✅ 设置已保存" : "保存配置"}
+        {saveStatus === "saved" ? (t('settings.config_saved') || "✅ 设置已保存") : (t('settings.save_config') || "保存配置")}
       </button>
 
     </div>

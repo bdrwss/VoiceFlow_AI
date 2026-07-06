@@ -4,10 +4,15 @@ import App from "./App";
 
 import { ModalProvider } from "./components/ModalContext";
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <ModalProvider>
-      <App />
-    </ModalProvider>
-  </React.StrictMode>,
-);
+import { initSettingsStore } from "./utils/store";
+import "./i18n";
+
+initSettingsStore().then(() => {
+  ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    <React.StrictMode>
+      <ModalProvider>
+        <App />
+      </ModalProvider>
+    </React.StrictMode>,
+  );
+});

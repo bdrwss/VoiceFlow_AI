@@ -3,10 +3,13 @@ export interface LLMConfig {
   baseUrl: string;
   model: string;
   promptStyle: string; // "formal" | "concise" | "academic" | "natural"
+  customPromptText?: string;
   appName?: string;
   hotWords?: string;
   temperature?: number;
   maxTokens?: number;
+  isLocal?: boolean;
+  screenshotBase64?: string;
 }
 
 const STYLE_PROMPTS: Record<string, string> = {
@@ -17,11 +20,11 @@ const STYLE_PROMPTS: Record<string, string> = {
 };
 
 export async function refineText(text: string, config: LLMConfig): Promise<string> {
-  if (!config.apiKey) {
+  if (!config.isLocal && !config.apiKey) {
     throw new Error("请先在设置中配置 LLM API Key。");
   }
 
-  let systemPrompt = STYLE_PROMPTS[config.promptStyle] || STYLE_PROMPTS.natural;
+  let systemPrompt = config.customPromptText || STYLE_PROMPTS[config.promptStyle] || STYLE_PROMPTS.natural;
 
   if (config.appName) {
     const app = config.appName.toLowerCase();
@@ -37,27 +40,47 @@ export async function refineText(text: string, config: LLMConfig): Promise<strin
   if (config.hotWords && config.hotWords.trim()) {
     systemPrompt += ` [系统强制指令: 用户设置了以下专有词库/热词：【${config.hotWords}】。如果识别文本中存在同音、近音词或可能是上述热词的拼写错误，请务必将其纠正为上述热词，优先使用这些专业术语。]`;
   }
+
+  if (config.screenshotBase64) {
+    systemPrompt += "\n[系统注入: 用户开启了屏幕感知模式。当前会附带一张屏幕截图作为上下文。请结合截图中的信息来理解用户的语音指令，然后生成适当的回复文本。如果语音指令是要求你\"回复\"、\"总结\"、\"翻译\"等动作，请直接输出目标文本。如果语音指令是常规听写润色且截图不相关，请忽略截图，按正常润色流程处理。]";
+  }
+
   const url = `${config.baseUrl.replace(/\/$/, "")}/chat/completions`;
 
   const MAX_RETRIES = 2;
-  const TIMEOUT_MS = 15000;
+  const TIMEOUT_MS = config.screenshotBase64 ? 30000 : 15000;
+
+  // 如果遇到模型不支持图片(通常返回400)，且我们发送了截图，自动降级为纯文本重试
+  let currentScreenshot = config.screenshotBase64;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json"
+      };
+      if (!config.isLocal) {
+        headers["Authorization"] = `Bearer ${config.apiKey}`;
+      }
+
+      let userContent: any = `原始识别文本为：\n"""\n${text}\n"""`;
+      if (currentScreenshot) {
+        userContent = [
+          { type: "image_url", image_url: { url: `data:image/jpeg;base64,${currentScreenshot}` } },
+          { type: "text", text: `[屏幕上下文] 上面的图片是我当前屏幕内容。\n[语音指令] ${text}\n\n请结合屏幕内容理解我的意图，直接输出回复文本，不要解释或描述图片。` }
+        ];
+      }
+
       const response = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${config.apiKey}`
-        },
+        headers,
         body: JSON.stringify({
           model: config.model,
           messages: [
             { role: "system", content: systemPrompt },
-            { role: "user", content: `原始识别文本为：\n"""\n${text}\n"""` }
+            { role: "user", content: userContent }
           ],
           temperature: config.temperature ?? 0.3,
           max_tokens: config.maxTokens ?? 1000
@@ -69,6 +92,11 @@ export async function refineText(text: string, config: LLMConfig): Promise<strin
 
       if (!response.ok) {
         const errorText = await response.text();
+        if (response.status === 400 && currentScreenshot) {
+          console.warn("模型可能不支持多模态，自动降级为纯文本重试...");
+          currentScreenshot = undefined;
+          continue; // 降级并立即进入下一次尝试
+        }
         throw new Error(`LLM 接口请求失败 (${response.status}): ${errorText}`);
       }
 
@@ -96,16 +124,20 @@ export async function refineText(text: string, config: LLMConfig): Promise<strin
   throw new Error("AI 润色失败");
 }
 
-export async function testConnection(config: Pick<LLMConfig, 'apiKey' | 'baseUrl' | 'model'>): Promise<{ ok: boolean; message: string; latencyMs: number }> {
+export async function testConnection(config: Pick<LLMConfig, 'apiKey' | 'baseUrl' | 'model' | 'isLocal'>): Promise<{ ok: boolean; message: string; latencyMs: number }> {
   const url = `${config.baseUrl.replace(/\/$/, "")}/chat/completions`;
   const start = Date.now();
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json"
+    };
+    if (!config.isLocal) {
+      headers["Authorization"] = `Bearer ${config.apiKey}`;
+    }
+
     const res = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${config.apiKey}`
-      },
+      headers,
       body: JSON.stringify({
         model: config.model,
         messages: [{ role: "user", content: "hi" }],
@@ -121,5 +153,35 @@ export async function testConnection(config: Pick<LLMConfig, 'apiKey' | 'baseUrl
     return { ok: true, message: `连接成功 (${latencyMs}ms)`, latencyMs };
   } catch (e: any) {
     return { ok: false, message: e.message || "连接失败", latencyMs: Date.now() - start };
+  }
+}
+
+export async function getOllamaModels(baseUrl: string): Promise<{name: string, size: string}[]> {
+  try {
+    const url = `${baseUrl.replace(/\/v1\/?$/, "")}/api/tags`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data?.models?.map((m: any) => {
+      const sizeGB = (m.size / (1024 * 1024 * 1024)).toFixed(1);
+      return { name: m.name, size: `${sizeGB} GB` };
+    }) || [];
+  } catch (e: any) {
+    console.warn("Failed to fetch Ollama models:", e);
+    return [];
+  }
+}
+
+export async function checkOllamaHealth(baseUrl: string): Promise<{ online: boolean; modelCount: number }> {
+  try {
+    const url = `${baseUrl.replace(/\/v1\/?$/, "")}/api/tags`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
+    if (res.ok) {
+      const data = await res.json();
+      return { online: true, modelCount: data?.models?.length || 0 };
+    }
+    return { online: false, modelCount: 0 };
+  } catch (e) {
+    return { online: false, modelCount: 0 };
   }
 }

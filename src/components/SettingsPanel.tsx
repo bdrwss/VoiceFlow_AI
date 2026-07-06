@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import { Settings } from '../hooks/useSettings';
 import "./SettingsPanel.css";
 import { Search, ChevronUp, ChevronDown, Download } from 'lucide-react';
@@ -6,13 +7,12 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useModal } from './ModalContext';
 import { LLM_PROVIDERS } from '../utils/llm-providers';
-import { testConnection } from '../utils/llm';
+import { testConnection, checkOllamaHealth, getOllamaModels } from '../utils/llm';
 interface SettingsPanelProps {
   settings: Settings;
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   logs: string[];
   setLogs: React.Dispatch<React.SetStateAction<string[]>>;
-  autostartEnabled: boolean;
   toggleAutostart: () => void;
 }
 
@@ -21,9 +21,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   updateSetting,
   logs,
   setLogs,
-  autostartEnabled,
   toggleAutostart
 }) => {
+  const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState("");
   const [matches, setMatches] = useState<HTMLElement[]>([]);
   const { showAlert, showConfirm } = useModal();
@@ -32,12 +32,37 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [appVersion, setAppVersion] = useState("v1.0.5");
   const [testStatus, setTestStatus] = useState<{status: 'idle'|'testing'|'success'|'error', msg: string}>({status: 'idle', msg: ''});
   const [showAdvancedLlm, setShowAdvancedLlm] = useState(false);
+  const [ollamaStatus, setOllamaStatus] = useState<{status: 'idle'|'checking'|'connected'|'disconnected', modelCount: number}>({status: 'idle', modelCount: 0});
+  const [ollamaModels, setOllamaModels] = useState<{name: string, size: string}[]>([]);
 
   useEffect(() => {
     import('@tauri-apps/api/app').then(({ getVersion }) => {
       getVersion().then(v => setAppVersion('v' + v)).catch(console.error);
     });
   }, []);
+
+  const refreshOllama = async () => {
+    setOllamaStatus(prev => ({ ...prev, status: 'checking' }));
+    const health = await checkOllamaHealth(settings.baseUrl || "http://localhost:11434/v1");
+    if (health.online) {
+      setOllamaStatus({ status: 'connected', modelCount: health.modelCount });
+      const models = await getOllamaModels(settings.baseUrl || "http://localhost:11434/v1");
+      setOllamaModels(models);
+      // Auto-select first model if current model is empty or not in the list
+      if (models.length > 0 && !models.find(m => m.name === settings.modelName)) {
+        updateSetting("modelName", models[0].name);
+      }
+    } else {
+      setOllamaStatus({ status: 'disconnected', modelCount: 0 });
+      setOllamaModels([]);
+    }
+  };
+
+  useEffect(() => {
+    if (settings.llmProvider === "ollama") {
+      refreshOllama();
+    }
+  }, [settings.llmProvider, settings.baseUrl]);
 
   const [isDownloadingModel, setIsDownloadingModel] = useState(false);
   const [downloadStep, setDownloadStep] = useState("");
@@ -151,33 +176,52 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   return (
     <div className="settings-pane" ref={containerRef}>
-      <div className="settings-search-bar">
-        <Search size={16} className="search-icon" />
-        <input 
-          type="text" 
-          placeholder="搜索设置项..." 
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        {matches.length > 0 && (
-          <div className="search-nav">
-            <span className="search-count">{currentMatchIndex + 1} / {matches.length}</span>
-            <button onClick={handlePrev} className="search-nav-btn"><ChevronUp size={16}/></button>
-            <button onClick={handleNext} className="search-nav-btn"><ChevronDown size={16}/></button>
-          </div>
-        )}
-        {searchTerm && matches.length === 0 && (
-          <span className="search-count no-match">无匹配项</span>
-        )}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', position: 'sticky', top: 0, zIndex: 11, background: 'var(--bg-main)' }}>
+        <div className="settings-search-bar" style={{ flex: 1, marginBottom: 0 }}>
+          <Search size={16} className="search-icon" />
+          <input 
+            type="text" 
+            placeholder={t('settings.search_ph') || "搜索设置项..."}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          {matches.length > 0 && (
+            <div className="search-nav">
+              <span className="search-count">{currentMatchIndex + 1} / {matches.length}</span>
+              <button onClick={handlePrev} className="search-nav-btn"><ChevronUp size={16}/></button>
+              <button onClick={handleNext} className="search-nav-btn"><ChevronDown size={16}/></button>
+            </div>
+          )}
+          {searchTerm && matches.length === 0 && (
+            <span className="search-count no-match">{t('settings.no_match') || "无匹配项"}</span>
+          )}
+        </div>
+        <select 
+          value={settings.uiLanguage}
+          onChange={(e) => updateSetting("uiLanguage", e.target.value)}
+          style={{
+            width: '120px',
+            background: 'rgba(0,0,0,0.3)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            color: 'var(--text-main)',
+            borderRadius: '8px',
+            padding: '0 10px',
+            outline: 'none',
+            cursor: 'pointer'
+          }}
+        >
+          <option value="zh-CN">简体中文</option>
+          <option value="en-US">English</option>
+        </select>
       </div>
 
 
       <div className="settings-group">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <h3 style={{ marginBottom: 0 }}>大语言模型接口 (LLM Config)</h3>
+          <h3 style={{ marginBottom: 0 }}>{t('settings.llm_config') || "大语言模型接口 (LLM Config)"}</h3>
           <div 
             style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
-            title="关闭后，本软件将作为纯语音听写工具，直接输出识别的原文，不再调用大模型进行润色。"
+            title={t('settings.llm_toggle_tip') || "关闭后，本软件将作为纯语音听写工具，直接输出识别的原文，不再调用大模型进行润色。"}
             onClick={() => updateSetting("enableOptimization", !settings.enableOptimization)}
           >
             <div 
@@ -192,7 +236,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         {settings.enableOptimization && (
           <>
             <div className="input-item">
-          <label>服务商 (Provider)</label>
+          <label>{t('settings.provider') || "服务商 (Provider)"}</label>
           <select 
             value={settings.llmProvider} 
             onChange={(e) => {
@@ -208,17 +252,28 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             }}
           >
             {LLM_PROVIDERS.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+              <option key={p.id} value={p.id}>{t(`settings.providers.${p.id}.name`) || p.name}</option>
             ))}
           </select>
           {LLM_PROVIDERS.find(p => p.id === settings.llmProvider)?.description && (
-            <p className="input-tip">{LLM_PROVIDERS.find(p => p.id === settings.llmProvider)?.description}</p>
+            <p className="input-tip">{t(`settings.providers.${settings.llmProvider}.desc`) || LLM_PROVIDERS.find(p => p.id === settings.llmProvider)?.description}</p>
+          )}
+
+          {settings.llmProvider === "ollama" && (
+            <div style={{ marginTop: '12px', padding: '10px', borderRadius: '6px', backgroundColor: ollamaStatus.status === 'connected' ? 'rgba(16, 185, 129, 0.1)' : ollamaStatus.status === 'disconnected' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(156, 163, 175, 0.1)', display: 'flex', alignItems: 'center', gap: '8px', border: `1px solid ${ollamaStatus.status === 'connected' ? 'rgba(16, 185, 129, 0.2)' : ollamaStatus.status === 'disconnected' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(156, 163, 175, 0.2)'}` }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: ollamaStatus.status === 'connected' ? '#10b981' : ollamaStatus.status === 'disconnected' ? '#ef4444' : '#9ca3af', animation: ollamaStatus.status === 'checking' ? 'pulse 1.5s infinite' : 'none' }}></div>
+              <span style={{ fontSize: '13px', color: ollamaStatus.status === 'connected' ? '#10b981' : ollamaStatus.status === 'disconnected' ? '#ef4444' : '#9ca3af' }}>
+                {ollamaStatus.status === 'checking' ? (t('settings.ollama_checking') || "检测中...") : 
+                 ollamaStatus.status === 'connected' ? (t('settings.ollama_connected', { count: ollamaStatus.modelCount })?.replace('{{count}}', ollamaStatus.modelCount.toString()) || `Ollama 已连接 · ${ollamaStatus.modelCount} 个模型可用`) : 
+                 (t('settings.ollama_disconnected') || "Ollama 未检测到，请确认已启动")}
+              </span>
+            </div>
           )}
         </div>
 
         {settings.llmProvider !== "ollama" && (
           <div className="input-item">
-            <label>API Key</label>
+            <label>{t('settings.api_key') || "API Key"}</label>
             <div style={{ display: 'flex', gap: '8px' }}>
               <input 
                 type="password" 
@@ -240,7 +295,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 }}
                 disabled={testStatus.status === 'testing' || !settings.apiKey}
               >
-                {testStatus.status === 'testing' ? '测试中...' : '测试连接'}
+                {testStatus.status === 'testing' ? (t('settings.testing') || "测试中...") : (t('settings.test_connection') || "测试连接")}
               </button>
             </div>
             {testStatus.status !== 'idle' && (
@@ -254,6 +309,67 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         <div className="input-item">
           <label>模型名称 (Model Name)</label>
           {(() => {
+            if (settings.llmProvider === "ollama") {
+              return (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '8px', flex: 1, minWidth: '200px' }}>
+                    <select 
+                      value={ollamaModels.find(m => m.name === settings.modelName) ? settings.modelName : "custom_input"} 
+                      onChange={(e) => {
+                        if (e.target.value === "custom_input") {
+                          updateSetting("modelName", "");
+                        } else {
+                          updateSetting("modelName", e.target.value);
+                        }
+                      }}
+                      style={{ flex: 1, minWidth: 0 }}
+                      disabled={ollamaModels.length === 0}
+                    >
+                    {ollamaModels.map(m => (
+                      <option key={m.name} value={m.name}>{m.name} ({m.size})</option>
+                    ))}
+                    <option value="custom_input">{t('settings.custom_input') || "自定义输入..."}</option>
+                  </select>
+                  <button className="btn secondary icon-only" onClick={refreshOllama} title={t('settings.ollama_refresh') || "刷新模型列表"}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg>
+                  </button>
+                  </div>
+                  {(!ollamaModels.find(m => m.name === settings.modelName)) && (
+                    <input 
+                      type="text" 
+                      value={settings.modelName} 
+                      onChange={(e) => updateSetting("modelName", e.target.value)} 
+                      placeholder={t('settings.custom_input') || "自定义输入..."}
+                      style={{ flex: 1, minWidth: '200px' }}
+                    />
+                  )}
+                  <button 
+                    className="btn secondary" 
+                    onClick={async () => {
+                      setTestStatus({ status: 'testing', msg: '测试中...' });
+                      const res = await testConnection({ apiKey: "", baseUrl: settings.baseUrl, model: settings.modelName, isLocal: true });
+                      if (res.ok) {
+                        setTestStatus({ status: 'success', msg: res.message });
+                      } else {
+                        setTestStatus({ status: 'error', msg: res.message });
+                      }
+                    }}
+                    disabled={testStatus.status === 'testing' || !settings.modelName}
+                    style={{ marginLeft: 'auto' }}
+                  >
+                    {testStatus.status === 'testing' ? (t('settings.testing') || "测试中...") : (t('settings.ollama_test_infer') || "测试推理")}
+                  </button>
+                  {testStatus.status !== 'idle' && (
+                    <div style={{ width: '100%' }}>
+                      <p className={`input-tip ${testStatus.status === 'error' ? 'error-text' : 'success-text'}`} style={{ color: testStatus.status === 'error' ? '#ef4444' : '#10b981', margin: '4px 0 0 0' }}>
+                        {testStatus.msg}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
             const currentProvider = LLM_PROVIDERS.find(p => p.id === settings.llmProvider);
             if (currentProvider && currentProvider.models.length > 0) {
               return (
@@ -269,17 +385,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     }}
                     style={{ flex: 1, minWidth: 0 }}
                   >
-                    {currentProvider.models.map(m => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                    <option value="custom_input">自定义输入...</option>
-                  </select>
+                  {LLM_PROVIDERS.find(p => p.id === settings.llmProvider)?.models.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                  <option value="custom_input">{t('settings.custom_input') || "自定义输入..."}</option>
+                </select>
                   {(!currentProvider.models.includes(settings.modelName)) && (
                     <input 
                       type="text" 
                       value={settings.modelName} 
                       onChange={(e) => updateSetting("modelName", e.target.value)} 
-                      placeholder="手动输入模型名"
+                      placeholder={t('settings.custom_input') || "自定义输入..."}
                       style={{ flex: 1, minWidth: 0 }}
                     />
                   )}
@@ -297,21 +413,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           })()}
         </div>
 
-        <div className="input-item">
-          <button 
-            className="btn ghost" 
-            onClick={() => setShowAdvancedLlm(!showAdvancedLlm)}
-            style={{ padding: '4px 0', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px', background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
-          >
-            {showAdvancedLlm ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
-            高级选项 (Advanced)
-          </button>
+        <div className="advanced-toggle" onClick={() => setShowAdvancedLlm(!showAdvancedLlm)}>
+          <span>{t('settings.advanced') || "高级选项"}</span>
+          {showAdvancedLlm ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </div>
 
         {showAdvancedLlm && (
-          <div style={{ paddingLeft: '12px', borderLeft: '2px solid var(--border-color)', marginTop: '8px', marginLeft: '4px' }}>
+          <div className="advanced-panel">
             <div className="input-item">
-              <label>接口代理地址 (Base URL)</label>
+              <label>{t('settings.base_url') || "接口代理地址 (Base URL)"}</label>
               <input 
                 type="text" 
                 value={settings.baseUrl} 
@@ -321,7 +431,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
             
             <div className="input-item">
-              <label>Temperature (生成随机性, 默认 0.3)</label>
+              <label>{t('settings.temperature') || "Temperature (生成随机性, 默认 0.3)"}</label>
               <input 
                 type="number" 
                 step="0.1"
@@ -333,7 +443,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
 
             <div className="input-item">
-              <label>Max Tokens (最大生成长度, 默认 1000)</label>
+              <label>{t('settings.max_tokens') || "Max Tokens (最大生成长度, 默认 1000)"}</label>
               <input 
                 type="number" 
                 step="100"
@@ -348,104 +458,181 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       </div>
 
       <div className="settings-group">
-        <h3>打字与上屏模式 (Typing & Input)</h3>
+        <h3>{t('settings.typing_mode') || "打字与上屏模式 (Typing & Input)"}</h3>
         
         <div className="input-item">
-          <label>上屏模式</label>
+          <label>{t('settings.mode_label') || "上屏模式"}</label>
           <select value={settings.typeMode} onChange={(e) => updateSetting("typeMode", e.target.value as "simulate" | "clipboard")}>
-            <option value="simulate">自动上屏 (依赖模拟按键，推荐日常使用)</option>
-            <option value="clipboard">纯剪贴板模式 (仅复制不按键，完美绕过高权限/游戏反作弊拦截)</option>
+            <option value="simulate">{t('settings.mode_simulate') || "自动上屏 (依赖模拟按键，推荐日常使用)"}</option>
+            <option value="clipboard">{t('settings.mode_clipboard') || "纯剪贴板模式 (仅复制不按键，完美绕过高权限/游戏反作弊拦截)"}</option>
           </select>
-          <p className="input-tip">如果遇到在某些高权限软件或游戏中文字无法打出，请切换至纯剪贴板模式。</p>
+          <p className="input-tip">{t('settings.mode_tip') || "如果遇到在某些高权限软件或游戏中文字无法打出，请切换至纯剪贴板模式。"}</p>
         </div>
       </div>
 
       <div className="settings-group">
-        <h3>听写与优化偏好</h3>
+        <h3>{t('settings.pref_title') || "听写与优化偏好"}</h3>
+
+        <div className="input-item">
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <input 
+              type="checkbox" 
+              checked={settings.enableScreenCapture}
+              onChange={(e) => updateSetting("enableScreenCapture", e.target.checked)}
+              style={{ width: '16px', height: '16px', margin: 0 }}
+            />
+            {t('settings.screen_capture') || "屏幕感知 (Screen-Aware)"}
+          </label>
+          <p className="input-tip">{t('settings.screen_capture_tip') || "开启后，说话时会同步截取屏幕发送给大模型（仅支持具备图像理解能力的多模态模型，如 GPT-4o、Qwen-VL）。失败会自动降级为纯文本润色。"}</p>
+          
+          {settings.enableScreenCapture && (
+            <div style={{ marginTop: '12px', paddingLeft: '24px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '13px', color: '#6b7280' }}>{t('settings.screen_capture_mode') || "捕获范围"}</label>
+              <select 
+                value={settings.screenCaptureMode} 
+                onChange={(e) => updateSetting("screenCaptureMode", e.target.value as "window" | "fullscreen")}
+                style={{ width: 'fit-content' }}
+              >
+                <option value="window">{t('settings.screen_capture_window') || "当前活跃窗口"}</option>
+                <option value="fullscreen">{t('settings.screen_capture_fullscreen') || "整个屏幕"}</option>
+              </select>
+            </div>
+          )}
+        </div>
         
         <div className="input-item">
-          <label>专有词汇 / 热词 (Hot Words)</label>
+          <label>{t('settings.hotwords') || "专有词汇 / 热词 (Hot Words)"}</label>
           <input 
             type="text" 
             value={settings.hotWords} 
             onChange={(e) => updateSetting("hotWords", e.target.value)} 
-            placeholder="例如：Tauri, Enigo, Vue, 降噪"
+            placeholder={t('settings.hotwords_placeholder') || "例如：Tauri, Enigo, Vue, 降噪"}
           />
-          <p className="input-tip">使用逗号分隔，语音识别和大模型优化时会强制偏向这些专有词汇，大幅提升专业场景准确率。</p>
+          <p className="input-tip">{t('settings.hotwords_tip') || "使用逗号分隔，语音识别和大模型优化时会强制偏向这些专有词汇，大幅提升专业场景准确率。"}</p>
         </div>
         
         <div className="input-item">
-          <label>AI 优化风格</label>
-          <select value={settings.promptStyle} onChange={(e) => updateSetting("promptStyle", e.target.value)}>
-            <option value="natural">自然听写润色（去口语化、加标点）</option>
-            <option value="formal">商务正式书面（邮件、汇报公文）</option>
-            <option value="concise">精练精简要点（提炼摘要）</option>
-            <option value="academic">学术与技术文档强化</option>
-          </select>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <label style={{ margin: 0 }}>{t('settings.ai_style') || "AI 优化风格预设 (Prompt Presets)"}</label>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+            <select style={{ flex: 1, minWidth: 0 }} value={settings.promptStyle} onChange={(e) => updateSetting("promptStyle", e.target.value)}>
+              {settings.customPrompts?.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <button 
+              className="btn secondary" 
+              onClick={() => {
+                const name = prompt("请输入新预设名称:");
+                if (!name) return;
+                const id = `custom_${Date.now()}`;
+                const newPrompts = [...(settings.customPrompts || []), { id, name, prompt: "请帮我润色以下文本：" }];
+                updateSetting("customPrompts", newPrompts);
+                updateSetting("promptStyle", id);
+              }}
+              title="添加新预设"
+            >
+              + 新增
+            </button>
+            {settings.customPrompts?.length > 1 && (
+              <button 
+                className="btn secondary"
+                onClick={() => {
+                  if (confirm(`确定要删除预设 "${settings.customPrompts.find(p => p.id === settings.promptStyle)?.name}" 吗？`)) {
+                    const newPrompts = settings.customPrompts.filter(p => p.id !== settings.promptStyle);
+                    updateSetting("customPrompts", newPrompts);
+                    updateSetting("promptStyle", newPrompts[0].id);
+                  }
+                }}
+                title="删除当前预设"
+              >
+                删除
+              </button>
+            )}
+          </div>
+          {(() => {
+            const currentPrompt = settings.customPrompts?.find(p => p.id === settings.promptStyle);
+            if (!currentPrompt) return null;
+            return (
+              <textarea 
+                value={currentPrompt.prompt}
+                onChange={(e) => {
+                  const newPrompts = settings.customPrompts.map(p => 
+                    p.id === settings.promptStyle ? { ...p, prompt: e.target.value } : p
+                  );
+                  updateSetting("customPrompts", newPrompts);
+                }}
+                placeholder="在此编辑提示词 (Prompt)..."
+                style={{ width: '100%', height: '80px', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'var(--text-main)', padding: '10px 14px', fontSize: '0.9rem', resize: 'vertical' }}
+              />
+            );
+          })()}
+          <p className="input-tip">直接修改文本框中的 Prompt，会自动保存。新增的预设可以被选用并参与大模型润色。</p>
         </div>
 
         <div className="input-item">
-          <label>语音识别语言</label>
+          <label>{t('settings.asr_lang') || "语音识别语言"}</label>
           <select value={settings.asrLanguage} onChange={(e) => updateSetting("asrLanguage", e.target.value)}>
-            <option value="chinese">中文 (Chinese)</option>
-            <option value="english">英文 (English)</option>
-            <option value="japanese">日文 (Japanese)</option>
-            <option value="korean">韩文 (Korean)</option>
-            <option value="french">法文 (French)</option>
-            <option value="german">德文 (German)</option>
-            <option value="spanish">西班牙文 (Spanish)</option>
-            <option value="auto">自动检测 (Auto-detect)</option>
+            <option value="chinese">{t('settings.lang_zh') || "中文 (Chinese)"}</option>
+            <option value="english">{t('settings.lang_en') || "英文 (English)"}</option>
+            <option value="japanese">{t('settings.lang_ja') || "日文 (Japanese)"}</option>
+            <option value="korean">{t('settings.lang_ko') || "韩文 (Korean)"}</option>
+            <option value="french">{t('settings.lang_fr') || "法文 (French)"}</option>
+            <option value="german">{t('settings.lang_de') || "德文 (German)"}</option>
+            <option value="spanish">{t('settings.lang_es') || "西班牙文 (Spanish)"}</option>
+            <option value="auto">{t('settings.lang_auto') || "自动检测 (Auto-detect)"}</option>
           </select>
-          <p className="input-tip">指定 Whisper 识别的目标语言，推荐手动选择以提高准确率。</p>
+          <p className="input-tip">{t('settings.asr_lang_tip') || "指定 Whisper 识别的目标语言，推荐手动选择以提高准确率。"}</p>
         </div>
 
         <div className="input-item">
-          <label>语音识别引擎 (ASR Engine)</label>
+          <label>{t('settings.asr_engine') || "语音识别引擎 (ASR Engine)"}</label>
           <select value={settings.asrEngine} onChange={(e) => updateSetting("asrEngine", e.target.value as "local" | "api")}>
-            <option value="local">本地离线模型 (免费/保护隐私)</option>
-            <option value="api">云端 API 模型 (极速/支持流式上屏)</option>
+            <option value="local">{t('settings.engine_local') || "本地离线模型 (免费/保护隐私)"}</option>
+            <option value="api">{t('settings.engine_api') || "云端 API 模型 (极速/支持流式上屏)"}</option>
           </select>
         </div>
 
         {settings.asrEngine === 'api' && (
           <div className="input-item" style={{ background: 'rgba(52, 211, 153, 0.05)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(52, 211, 153, 0.2)' }}>
-            <label style={{ color: '#34d399' }}>API 语音模型配置 (兼容 OpenAI 格式)</label>
+            <label style={{ color: '#34d399' }}>{t('settings.asr_api_title') || "API 语音模型配置 (兼容 OpenAI 格式)"}</label>
             <input 
               type="text" 
               value={settings.asrApiUrl} 
               onChange={(e) => updateSetting("asrApiUrl", e.target.value)} 
-              placeholder="API URL (例如: https://api.groq.com/openai/v1/audio/transcriptions)"
+              placeholder={t('settings.asr_api_url_ph') || "API URL (例如: https://api.groq.com/openai/v1/audio/transcriptions)"}
               style={{ marginBottom: '8px' }}
             />
             <input 
               type="password" 
               value={settings.asrApiKey} 
               onChange={(e) => updateSetting("asrApiKey", e.target.value)} 
-              placeholder="API Key"
+              placeholder={t('settings.asr_api_key_ph') || "API Key"}
               style={{ marginBottom: '8px' }}
             />
             <input 
               type="text" 
               value={settings.asrApiModel} 
               onChange={(e) => updateSetting("asrApiModel", e.target.value)} 
-              placeholder="模型名称 (例如: whisper-large-v3)"
+              placeholder={t('settings.asr_api_model_ph') || "模型名称 (例如: whisper-large-v3)"}
             />
-            <p className="input-tip">使用快速的云端 API（如 Groq）可实现边说话边出字的流式体验。</p>
+            <p className="input-tip">{t('settings.asr_api_tip') || "使用快速的云端 API（如 Groq）可实现边说话边出字的流式体验。"}</p>
           </div>
         )}
 
         {settings.asrEngine === 'local' && (
           <>
             <div className="input-item">
-              <label>本地识别模型 (Offline ASR Model)</label>
+              <label>{t('settings.local_model_title') || "本地识别模型 (Offline ASR Model)"}</label>
               <div className="input-tip" style={{ marginTop: '8px', lineHeight: '1.5', fontSize: '11px', color: 'rgba(255,255,255,0.45)' }}>
-                <span style={{ fontWeight: 'bold', color: '#34d399' }}>当前独占引擎：SenseVoice Small (~250MB)</span>
-                <p style={{ margin: '6px 0 0 0', color: 'rgba(255,255,255,0.35)' }}>极速多语言模型，基于底层引擎原生推理。任意配置均可秒级响应。</p>
+                <span style={{ fontWeight: 'bold', color: '#34d399' }}>{t('settings.local_engine_desc1') || "当前独占引擎：SenseVoice Small (~250MB)"}</span>
+                <p style={{ margin: '6px 0 0 0', color: 'rgba(255,255,255,0.35)' }}>{t('settings.local_engine_desc2') || "极速多语言模型，基于底层引擎原生推理。任意配置均可秒级响应。"}</p>
                 <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: 'rgba(255,255,255,0.8)' }}>SenseVoice 模型状态</span>
+                    <span style={{ color: 'rgba(255,255,255,0.8)' }}>{t('settings.local_engine_status') || "SenseVoice 模型状态"}</span>
                     <button 
-                      onClick={forceRedownloadSenseVoice} 
+                      onClick={() => forceRedownloadSenseVoice()}
                       disabled={isDownloadingModel}
                       style={{
                         display: 'flex', alignItems: 'center', gap: '6px',
@@ -454,7 +641,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       }}
                     >
                       <Download size={12} />
-                      {isDownloadingModel ? '正在下载...' : '强制重新下载'}
+                      {isDownloadingModel ? (t('settings.downloading') || "正在下载...") : (t('settings.force_redownload') || "强制重新下载")}
                     </button>
                   </div>
                   {isDownloadingModel && (
@@ -469,7 +656,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     </div>
                   )}
                   {!isDownloadingModel && downloadStep === "下载完成，已准备就绪！" && (
-                    <div style={{ marginTop: '6px', fontSize: '11px', color: '#34d399' }}>✅ 模型已成功更新</div>
+                    <div style={{ marginTop: '6px', fontSize: '11px', color: '#34d399' }}>{t('settings.model_ready') || "✅ 模型已成功更新"}</div>
                   )}
                 </div>
               </div>
@@ -478,47 +665,52 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         )}
 
         <div className="input-item">
-          <label>触发快捷键</label>
+          <label>{t('settings.listen_key_label') || "触发快捷键"}</label>
           <select value={settings.listenKey} onChange={(e) => updateSetting("listenKey", e.target.value)}>
-            <option value="RControl">右 Ctrl 键 (Right Control)</option>
-            <option value="LControl">左 Ctrl 键 (Left Control)</option>
-            <option value="LAlt">左 Alt 键 (Left Alt / Option)</option>
-            <option value="RAlt">右 Alt 键 (Right Alt)</option>
-            <option value="CapsLock">大写锁定键 (CapsLock)</option>
+            <option value="RControl">{t('settings.key_rctrl') || "右 Ctrl 键 (Right Control)"}</option>
+            <option value="LControl">{t('settings.key_lctrl') || "左 Ctrl 键 (Left Control)"}</option>
+            <option value="LAlt">{t('settings.key_lalt') || "左 Alt 键 (Left Alt / Option)"}</option>
+            <option value="RAlt">{t('settings.key_ralt') || "右 Alt 键 (Right Alt)"}</option>
+            <option value="CapsLock">{t('settings.key_caps') || "大写锁定键 (CapsLock)"}</option>
           </select>
-          <p className="input-tip">全局监听按键按下即开始录音，松开即停止识别并自动打字。</p>
         </div>
+      </div>
 
+      <div className="settings-group">
+        <h3>{t('settings.blacklist') || "全局防误触黑名单 (Blacklist)"}</h3>
+        <p className="input-tip">{t('settings.blacklist_tip') || "当您的焦点在这些程序（如游戏）上时，快捷键将被彻底禁用，保护隐私并防止游戏卡顿。"}</p>
         <div className="input-item">
-          <label>全局防误触黑名单 (Blacklist)</label>
           <textarea 
             value={settings.blacklistStr} 
             onChange={(e) => updateSetting("blacklistStr", e.target.value)} 
-            placeholder="例如: csgo.exe, LOL.exe (用逗号或换行分隔)"
+            placeholder={t('settings.blacklist_ph') || "例如: csgo.exe, LOL.exe (用逗号或换行分隔)"}
             style={{ width: '100%', height: '60px', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'var(--text-main)', padding: '10px 14px', fontSize: '0.95rem', resize: 'vertical' }}
           />
-          <p className="input-tip">当您的焦点在这些程序（如游戏）上时，快捷键将被彻底禁用，保护隐私并防止游戏卡顿。</p>
         </div>
+      </div>
 
-        <div className="input-item" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+      <div className="settings-group">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <label style={{ marginBottom: 0 }}>开机自启</label>
-            <p className="input-tip" style={{ margin: '4px 0 0 0' }}>在系统登录时自动在后台静默运行</p>
+            <h3 style={{ marginBottom: 0 }}>{t('settings.autostart') || "开机自启"}</h3>
+            <p className="input-tip" style={{ marginTop: '6px', marginBottom: 0 }}>{t('settings.autostart_tip') || "在系统登录时自动在后台静默运行"}</p>
           </div>
           <div 
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
             onClick={toggleAutostart}
-            className={`toggle-switch ${autostartEnabled ? 'active' : ''}`}
-            role="switch"
-            aria-checked={autostartEnabled}
-            tabIndex={0}
           >
-            <div className="toggle-thumb" />
+            <div 
+              className={`toggle-switch ${settings.autoStart ? 'active' : ''}`}
+              style={{ margin: 0 }}
+            >
+              <div className="toggle-thumb"></div>
+            </div>
           </div>
         </div>
       </div>
       
       <div className="settings-group">
-        <h3>开发调试日志</h3>
+        <h3>{t('settings.logs') || "开发调试日志"}</h3>
         <textarea 
           readOnly 
           value={logs.join('\n')} 
@@ -534,7 +726,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             padding: '8px',
             resize: 'vertical'
           }}
-          placeholder="暂无调试日志"
+          placeholder={t('settings.no_logs') || "暂无调试日志"}
         />
         <button 
           onClick={() => setLogs([])}
@@ -549,47 +741,48 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             alignSelf: 'flex-start',
             marginTop: '6px'
           }}
-        >清空日志</button>
+        >{t('settings.clear_logs') || "清空日志"}</button>
       </div>
 
 
 
       <div className="settings-group" style={{ marginTop: '30px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-          <h3 style={{ margin: 0 }}>关于与更新 (About & Updates)</h3>
+          <h3 style={{ margin: 0 }}>{t('settings.about') || "关于与更新 (About & Updates)"}</h3>
           <button 
             onClick={async (e) => {
               const btn = e.currentTarget;
               const originalText = btn.innerText;
-              btn.innerText = "正在检查...";
+              btn.innerText = t('settings.checking_update') || "正在检查...";
               btn.disabled = true;
               try {
                 const { check } = await import('@tauri-apps/plugin-updater');
                 const update = await check();
                 
                 if (update) {
-                  const shouldUpdate = await showConfirm(`发现新版本: ${update.version}\n\n更新日志:\n${update.body}\n\n是否立即尝试自动更新？（若自动更新失败将提供备用下载链接）`);
+                  const updateFoundMsg = t('settings.update_found', { version: update.version, notes: update.body }) || `发现新版本: ${update.version}\n\n更新日志:\n${update.body}\n\n是否立即尝试自动更新？（若自动更新失败将提供备用下载链接）`;
+                  const shouldUpdate = await showConfirm(updateFoundMsg);
                   if (shouldUpdate) {
-                    btn.innerText = "正在下载并安装...";
+                    btn.innerText = t('settings.downloading_installing') || "正在下载并安装...";
                     let downloaded = 0;
                     let contentLength = 0;
                     await update.downloadAndInstall((event) => {
                       switch (event.event) {
                         case 'Started':
                           contentLength = event.data.contentLength || 0;
-                          btn.innerText = `下载中... (0%)`;
+                          btn.innerText = (t('settings.downloading_percent') || `下载中...`) + " (0%)";
                           break;
                         case 'Progress':
                           downloaded += event.data.chunkLength;
                           if (contentLength > 0) {
                             const percent = Math.round((downloaded / contentLength) * 100);
-                            btn.innerText = `下载中... (${percent}%)`;
+                            btn.innerText = (t('settings.downloading_percent') || `下载中...`) + ` (${percent}%)`;
                           } else {
-                            btn.innerText = `下载中... (${(downloaded / 1024 / 1024).toFixed(1)}MB)`;
+                            btn.innerText = (t('settings.downloading_percent') || `下载中...`) + ` (${(downloaded / 1024 / 1024).toFixed(1)}MB)`;
                           }
                           break;
                         case 'Finished':
-                          btn.innerText = "下载完成，准备重启";
+                          btn.innerText = t('settings.download_finished') || "下载完成，准备重启";
                           break;
                       }
                     });
@@ -597,19 +790,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     await relaunch();
                   }
                 } else {
-                  await showAlert("当前已经是最新版本！");
+                  await showAlert(t('settings.already_latest') || "当前已经是最新版本！");
                 }
               } catch (err) {
                 try {
                   const fallbackUi = (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', textAlign: 'left' }}>
-                      <p>自动更新失败，可能是由于网络原因导致无法连接 GitHub 下载更新包。</p>
-                      <p style={{ fontSize: '0.85em', color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '6px', borderRadius: '4px', wordBreak: 'break-all' }}>错误信息: {String(err)}</p>
+                      <p>{t('settings.update_fail_desc') || "自动更新失败，可能是由于网络原因导致无法连接 GitHub 下载更新包。"}</p>
+                      <p style={{ fontSize: '0.85em', color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '6px', borderRadius: '4px', wordBreak: 'break-all' }}>{t('settings.error_msg') || "错误信息"}: {String(err)}</p>
                     </div>
                   );
-                  await showAlert({ title: "自动更新失败", message: fallbackUi });
+                  await showAlert({ title: t('settings.update_failed_title') || "自动更新失败", message: fallbackUi });
                 } catch (fallbackErr) {
-                  await showAlert("检查更新失败，网络异常。\n" + err);
+                  await showAlert((t('settings.check_update_fail') || "检查更新失败，网络异常。\n") + err);
                 }
               } finally {
                 btn.innerText = originalText;
@@ -629,7 +822,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               whiteSpace: 'nowrap'
             }}
           >
-            检查更新
+            {t('settings.check_update') || "检查更新"}
           </button>
         </div>
 
@@ -637,28 +830,28 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ textAlign: 'left' }}>
               <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: '1.1rem', fontWeight: 'bold', margin: 0, marginBottom: '4px' }}>VoiceFlow AI</p>
-              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', margin: 0 }}>当前版本: {appVersion}</p>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', margin: 0 }}><Trans i18nKey="settings.current_version" values={{ version: appVersion }}>当前版本: {appVersion}</Trans></p>
             </div>
             <div style={{ padding: '4px 10px', background: 'rgba(255, 255, 255, 0.05)', color: 'rgba(255, 255, 255, 0.6)', borderRadius: '6px', fontSize: '0.8rem', border: '1px solid rgba(255,255,255,0.1)' }}>
-              稳定版
+              {t('settings.stable') || "稳定版"}
             </div>
           </div>
           
           <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.05)', textAlign: 'left' }}>
-            <p style={{ fontSize: '0.9rem', color: '#f3f4f6', marginBottom: '8px', fontWeight: 'bold' }}>📦 备用下载通道 (手动更新)</p>
-            <p style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '12px' }}>如果您由于网络限制无法通过“检查更新”按钮完成自动更新，您可以随时点击下方链接获取最新安装包：</p>
+            <p style={{ fontSize: '0.9rem', color: '#f3f4f6', marginBottom: '8px', fontWeight: 'bold' }}>{t('settings.backup_download') || "📦 备用下载通道 (手动更新)"}</p>
+            <p style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '12px' }}>{t('settings.backup_tip') || "如果您由于网络限制无法通过“检查更新”按钮完成自动更新，您可以随时点击下方链接获取最新安装包："}</p>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button 
                 onClick={async () => { const { openUrl } = await import('@tauri-apps/plugin-opener'); openUrl('https://pan.baidu.com/s/1_F4xAr_5XHxnRxtHKdNO1w?pwd=hzdp'); }}
                 style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#60a5fa', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
               >
-                百度网盘 (提取码: hzdp)
+                {t('settings.baidu_pan') || "百度网盘 (提取码: hzdp)"}
               </button>
               <button 
                 onClick={async () => { const { openUrl } = await import('@tauri-apps/plugin-opener'); openUrl('https://github.com/bdrwss/VoiceFlow_AI/releases'); }}
                 style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#d1d5db', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
               >
-                GitHub 发布页
+                {t('settings.github_release') || "GitHub 发布页"}
               </button>
             </div>
           </div>

@@ -109,7 +109,9 @@
 
 .card-raw .label, .card-refined .label {
   font-weight: 600;
-  width: 45px;
+  min-width: 55px;
+  max-width: 100px;
+  margin-right: 12px;
   flex-shrink: 0;
 }
 
@@ -135,6 +137,13 @@
   cursor: pointer;
   font-size: 0.8rem;
   transition: all 0.2s ease;
+}
+
+.action-btn.icon-only {
+  padding: 6px;
+  width: 28px;
+  height: 28px;
+  justify-content: center;
 }
 
 .action-btn:hover {
