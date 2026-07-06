@@ -27,7 +27,7 @@ const defaultSettings: Settings = {
   promptStyle: "natural",
   listenKey: "RControl",
   asrLanguage: "chinese",
-  whisperModel: "Xenova/whisper-tiny",
+  whisperModel: "sensevoice-small",
   inferenceDevice: "auto",
   asrEngine: "local",
   asrApiUrl: "https://api.groq.com/openai/v1/audio/transcriptions",
