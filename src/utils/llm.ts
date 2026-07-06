@@ -5,6 +5,8 @@ export interface LLMConfig {
   promptStyle: string; // "formal" | "concise" | "academic" | "natural"
   appName?: string;
   hotWords?: string;
+  temperature?: number;
+  maxTokens?: number;
 }
 
 const STYLE_PROMPTS: Record<string, string> = {
@@ -57,8 +59,8 @@ export async function refineText(text: string, config: LLMConfig): Promise<strin
             { role: "system", content: systemPrompt },
             { role: "user", content: `原始识别文本为：\n"""\n${text}\n"""` }
           ],
-          temperature: 0.3,
-          max_tokens: 1000
+          temperature: config.temperature ?? 0.3,
+          max_tokens: config.maxTokens ?? 1000
         }),
         signal: controller.signal
       });
@@ -90,5 +92,34 @@ export async function refineText(text: string, config: LLMConfig): Promise<strin
     }
   }
   
+  
   throw new Error("AI 润色失败");
+}
+
+export async function testConnection(config: Pick<LLMConfig, 'apiKey' | 'baseUrl' | 'model'>): Promise<{ ok: boolean; message: string; latencyMs: number }> {
+  const url = `${config.baseUrl.replace(/\/$/, "")}/chat/completions`;
+  const start = Date.now();
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [{ role: "user", content: "hi" }],
+        max_tokens: 1
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    const latencyMs = Date.now() - start;
+    if (!res.ok) {
+      const err = await res.text();
+      return { ok: false, message: `${res.status}: ${err.slice(0, 200)}`, latencyMs };
+    }
+    return { ok: true, message: `连接成功 (${latencyMs}ms)`, latencyMs };
+  } catch (e: any) {
+    return { ok: false, message: e.message || "连接失败", latencyMs: Date.now() - start };
+  }
 }

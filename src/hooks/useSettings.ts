@@ -2,9 +2,12 @@ import { useState, useEffect } from 'react';
 import { invoke } from "@tauri-apps/api/core";
 
 export interface Settings {
+  llmProvider: string;
   apiKey: string;
   baseUrl: string;
   modelName: string;
+  temperature: number;
+  maxTokens: number;
   promptStyle: string;
   listenKey: string;
   asrLanguage: string;
@@ -16,12 +19,16 @@ export interface Settings {
   hotWords: string;
   typeMode: "simulate" | "clipboard";
   autoStart: boolean;
+  enableOptimization: boolean;
 }
 
 const defaultSettings: Settings = {
+  llmProvider: "deepseek",
   apiKey: "",
   baseUrl: "https://api.deepseek.com/v1",
   modelName: "deepseek-chat",
+  temperature: 0.3,
+  maxTokens: 1000,
   promptStyle: "natural",
   listenKey: "RControl",
   asrLanguage: "chinese",
@@ -32,7 +39,8 @@ const defaultSettings: Settings = {
   blacklistStr: "LOL.exe, csgo.exe, r5apex.exe, GenshinImpact.exe, dota2.exe",
   hotWords: "",
   typeMode: "simulate",
-  autoStart: true
+  autoStart: true,
+  enableOptimization: true
 };
 
 export function useSettings() {
@@ -47,9 +55,12 @@ export function useSettings() {
       const legacyApiKey = localStorage.getItem("vf_api_key");
       if (legacyApiKey !== null) {
         return {
+          llmProvider: localStorage.getItem("vf_llm_provider") || defaultSettings.llmProvider,
           apiKey: legacyApiKey,
           baseUrl: localStorage.getItem("vf_base_url") || defaultSettings.baseUrl,
           modelName: localStorage.getItem("vf_model_name") || defaultSettings.modelName,
+          temperature: parseFloat(localStorage.getItem("vf_temperature") || defaultSettings.temperature.toString()),
+          maxTokens: parseInt(localStorage.getItem("vf_max_tokens") || defaultSettings.maxTokens.toString(), 10),
           promptStyle: localStorage.getItem("vf_prompt_style") || defaultSettings.promptStyle,
           listenKey: localStorage.getItem("vf_listen_key") || defaultSettings.listenKey,
           asrLanguage: localStorage.getItem("vf_asr_language") || defaultSettings.asrLanguage,
@@ -61,6 +72,7 @@ export function useSettings() {
           hotWords: localStorage.getItem("vf_hot_words") || defaultSettings.hotWords,
           typeMode: (localStorage.getItem("vf_type_mode") as "simulate" | "clipboard") || defaultSettings.typeMode,
           autoStart: localStorage.getItem("vf_auto_start") === "true" || defaultSettings.autoStart,
+          enableOptimization: localStorage.getItem("vf_enable_optimization") !== "false",
         };
       }
     } catch (e) {

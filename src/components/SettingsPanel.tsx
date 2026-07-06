@@ -5,6 +5,8 @@ import { Search, ChevronUp, ChevronDown, Download } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useModal } from './ModalContext';
+import { LLM_PROVIDERS } from '../utils/llm-providers';
+import { testConnection } from '../utils/llm';
 interface SettingsPanelProps {
   settings: Settings;
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
@@ -28,6 +30,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
   const [appVersion, setAppVersion] = useState("v1.0.5");
+  const [testStatus, setTestStatus] = useState<{status: 'idle'|'testing'|'success'|'error', msg: string}>({status: 'idle', msg: ''});
+  const [showAdvancedLlm, setShowAdvancedLlm] = useState(false);
 
   useEffect(() => {
     import('@tauri-apps/api/app').then(({ getVersion }) => {
@@ -169,37 +173,178 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
 
       <div className="settings-group">
-        <h3>大语言模型接口 (LLM Config)</h3>
-        
-        <div className="input-item">
-          <label>API Key</label>
-          <input 
-            type="password" 
-            value={settings.apiKey} 
-            onChange={(e) => updateSetting("apiKey", e.target.value)} 
-            placeholder="填写您的 API 密钥 (DeepSeek / OpenAI Key)"
-          />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+          <h3 style={{ marginBottom: 0 }}>大语言模型接口 (LLM Config)</h3>
+          <div 
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+            title="关闭后，本软件将作为纯语音听写工具，直接输出识别的原文，不再调用大模型进行润色。"
+            onClick={() => updateSetting("enableOptimization", !settings.enableOptimization)}
+          >
+            <div 
+              className={`toggle-switch ${settings.enableOptimization ? 'active' : ''}`}
+              style={{ margin: 0 }}
+            >
+              <div className="toggle-thumb"></div>
+            </div>
+          </div>
         </div>
 
-        <div className="input-item">
-          <label>接口代理地址 (Base URL)</label>
-          <input 
-            type="text" 
-            value={settings.baseUrl} 
-            onChange={(e) => updateSetting("baseUrl", e.target.value)} 
-            placeholder="https://api.deepseek.com/v1 或您自己的代理"
-          />
+        {settings.enableOptimization && (
+          <>
+            <div className="input-item">
+          <label>服务商 (Provider)</label>
+          <select 
+            value={settings.llmProvider} 
+            onChange={(e) => {
+              const providerId = e.target.value;
+              updateSetting("llmProvider", providerId);
+              const provider = LLM_PROVIDERS.find(p => p.id === providerId);
+              if (provider && provider.id !== "custom") {
+                updateSetting("baseUrl", provider.baseUrl);
+                if (provider.models.length > 0) {
+                  updateSetting("modelName", provider.models[0]);
+                }
+              }
+            }}
+          >
+            {LLM_PROVIDERS.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          {LLM_PROVIDERS.find(p => p.id === settings.llmProvider)?.description && (
+            <p className="input-tip">{LLM_PROVIDERS.find(p => p.id === settings.llmProvider)?.description}</p>
+          )}
         </div>
+
+        {settings.llmProvider !== "ollama" && (
+          <div className="input-item">
+            <label>API Key</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input 
+                type="password" 
+                value={settings.apiKey} 
+                onChange={(e) => updateSetting("apiKey", e.target.value)} 
+                placeholder="填写您的 API 密钥"
+                style={{ flex: 1 }}
+              />
+              <button 
+                className="btn secondary" 
+                onClick={async () => {
+                  setTestStatus({ status: 'testing', msg: '测试中...' });
+                  const res = await testConnection({ apiKey: settings.apiKey, baseUrl: settings.baseUrl, model: settings.modelName });
+                  if (res.ok) {
+                    setTestStatus({ status: 'success', msg: res.message });
+                  } else {
+                    setTestStatus({ status: 'error', msg: res.message });
+                  }
+                }}
+                disabled={testStatus.status === 'testing' || !settings.apiKey}
+              >
+                {testStatus.status === 'testing' ? '测试中...' : '测试连接'}
+              </button>
+            </div>
+            {testStatus.status !== 'idle' && (
+              <p className={`input-tip ${testStatus.status === 'error' ? 'error-text' : 'success-text'}`} style={{ color: testStatus.status === 'error' ? '#ef4444' : '#10b981' }}>
+                {testStatus.msg}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="input-item">
           <label>模型名称 (Model Name)</label>
-          <input 
-            type="text" 
-            value={settings.modelName} 
-            onChange={(e) => updateSetting("modelName", e.target.value)} 
-            placeholder="deepseek-chat"
-          />
+          {(() => {
+            const currentProvider = LLM_PROVIDERS.find(p => p.id === settings.llmProvider);
+            if (currentProvider && currentProvider.models.length > 0) {
+              return (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <select 
+                    value={currentProvider.models.includes(settings.modelName) ? settings.modelName : "custom_input"} 
+                    onChange={(e) => {
+                      if (e.target.value === "custom_input") {
+                        updateSetting("modelName", "");
+                      } else {
+                        updateSetting("modelName", e.target.value);
+                      }
+                    }}
+                    style={{ flex: 1, minWidth: 0 }}
+                  >
+                    {currentProvider.models.map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                    <option value="custom_input">自定义输入...</option>
+                  </select>
+                  {(!currentProvider.models.includes(settings.modelName)) && (
+                    <input 
+                      type="text" 
+                      value={settings.modelName} 
+                      onChange={(e) => updateSetting("modelName", e.target.value)} 
+                      placeholder="手动输入模型名"
+                      style={{ flex: 1, minWidth: 0 }}
+                    />
+                  )}
+                </div>
+              );
+            }
+            return (
+              <input 
+                type="text" 
+                value={settings.modelName} 
+                onChange={(e) => updateSetting("modelName", e.target.value)} 
+                placeholder="例如: deepseek-chat"
+              />
+            );
+          })()}
         </div>
+
+        <div className="input-item">
+          <button 
+            className="btn ghost" 
+            onClick={() => setShowAdvancedLlm(!showAdvancedLlm)}
+            style={{ padding: '4px 0', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px', background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+          >
+            {showAdvancedLlm ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+            高级选项 (Advanced)
+          </button>
+        </div>
+
+        {showAdvancedLlm && (
+          <div style={{ paddingLeft: '12px', borderLeft: '2px solid var(--border-color)', marginTop: '8px', marginLeft: '4px' }}>
+            <div className="input-item">
+              <label>接口代理地址 (Base URL)</label>
+              <input 
+                type="text" 
+                value={settings.baseUrl} 
+                onChange={(e) => updateSetting("baseUrl", e.target.value)} 
+                placeholder="默认会根据服务商自动填充"
+              />
+            </div>
+            
+            <div className="input-item">
+              <label>Temperature (生成随机性, 默认 0.3)</label>
+              <input 
+                type="number" 
+                step="0.1"
+                min="0"
+                max="2"
+                value={settings.temperature} 
+                onChange={(e) => updateSetting("temperature", parseFloat(e.target.value))} 
+              />
+            </div>
+
+            <div className="input-item">
+              <label>Max Tokens (最大生成长度, 默认 1000)</label>
+              <input 
+                type="number" 
+                step="100"
+                value={settings.maxTokens} 
+                onChange={(e) => updateSetting("maxTokens", parseInt(e.target.value, 10))} 
+              />
+            </div>
+          </div>
+        )}
+          </>
+        )}
       </div>
 
       <div className="settings-group">
@@ -355,26 +500,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <p className="input-tip">当您的焦点在这些程序（如游戏）上时，快捷键将被彻底禁用，保护隐私并防止游戏卡顿。</p>
         </div>
 
-        <div className="input-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+        <div className="input-item" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
           <div>
             <label style={{ marginBottom: 0 }}>开机自启</label>
             <p className="input-tip" style={{ margin: '4px 0 0 0' }}>在系统登录时自动在后台静默运行</p>
           </div>
-          <button 
+          <div 
             onClick={toggleAutostart}
-            style={{
-              padding: '6px 16px', 
-              borderRadius: '20px', 
-              border: 'none', 
-              background: autostartEnabled ? '#34d399' : 'rgba(255,255,255,0.1)', 
-              color: autostartEnabled ? '#000' : '#fff',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              transition: 'all 0.2s'
-            }}
+            className={`toggle-switch ${autostartEnabled ? 'active' : ''}`}
+            role="switch"
+            aria-checked={autostartEnabled}
+            tabIndex={0}
           >
-            {autostartEnabled ? "已开启" : "已关闭"}
-          </button>
+            <div className="toggle-thumb" />
+          </div>
         </div>
       </div>
       

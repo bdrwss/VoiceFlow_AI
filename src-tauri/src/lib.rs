@@ -103,16 +103,17 @@ fn replace_with_ai_text(original_len: usize, new_text: String) -> Result<(), Str
     // 微小缓冲延时
     thread::sleep(Duration::from_millis(30));
 
-    // 1. 选中刚刚打出的原文 (Shift + LeftArrow)
-    // 使用全选覆盖的方式，速度更快且对 Ctrl+Z 撤销更友好
+    // 1. 逐个删除刚刚打出的原文 (Backspace)
+    // 使用 Backspace 比 Shift+LeftArrow 兼容性更好，某些输入框不支持选中后覆盖
     if original_len > 0 {
-        enigo.key_down(Key::Shift);
         for _ in 0..original_len {
-            enigo.key_click(Key::LeftArrow);
+            enigo.key_down(Key::Backspace);
+            thread::sleep(Duration::from_millis(10));
+            enigo.key_up(Key::Backspace);
+            thread::sleep(Duration::from_millis(10));
         }
-        enigo.key_up(Key::Shift);
-        // 给系统一点时间反应选中文本
-        thread::sleep(Duration::from_millis(20));
+        // 给系统一点时间反应删除完成
+        thread::sleep(Duration::from_millis(30));
     }
 
     // 2. 将 AI 优化后的文本复制到剪贴板并粘贴，瞬时替换

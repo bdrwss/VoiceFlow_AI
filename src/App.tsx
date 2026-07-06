@@ -28,6 +28,7 @@ import { MainPanel } from "./components/MainPanel";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { AutoUpdater } from "./components/AutoUpdater";
+import { SetupWizard } from "./components/SetupWizard";
 
 function App() {
   const [logs, setLogs] = useState<string[]>([]);
@@ -91,6 +92,17 @@ function App() {
   const { settings, updateSetting, saveSettings, saveStatus, isDirty } = useSettings();
   const { history, addHistoryItem, updateHistoryItem, deleteHistoryItem, clearHistory, copyToClipboard, copiedId } = useHistory();
 
+  // 首次启动引导
+  const [showSetupWizard, setShowSetupWizard] = useState(() => {
+    return !localStorage.getItem("vf_setup_complete");
+  });
+
+  // 首次启动引导时，需要显示主窗口
+  useEffect(() => {
+    if (showSetupWizard && windowLabel === "main") {
+      getCurrentWindow().show().catch(console.error);
+    }
+  }, [showSetupWizard, windowLabel]);
 
   const [autostartEnabled, setAutostartEnabled] = useState(false);
 
@@ -177,11 +189,6 @@ function App() {
   // 初始化设备与读取历史记录
   useEffect(() => {
     recorderRef.current = new AudioRecorder();
-
-    // Show the main window after the component is mounted to prevent white flash
-    if (windowLabel === "main") {
-      getCurrentWindow().show().catch(console.error);
-    }
   }, []);
 
   const [retryKey, setRetryKey] = useState(0);
@@ -189,6 +196,9 @@ function App() {
   // 初始化加载 SenseVoice
   useEffect(() => {
     async function setupWhisper() {
+      // 首次引导中，不自动初始化引擎（由 SetupWizard 接管）
+      if (showSetupWizard) return;
+
       if (settings.asrEngine === "api") {
         setStatus("idle");
         return;
@@ -243,7 +253,33 @@ function App() {
       }
     }
     setupWhisper();
-  }, [settings.asrEngine, retryKey]);
+  }, [settings.asrEngine, retryKey, showSetupWizard]);
+
+  // 首次引导完成回调
+  const handleSetupComplete = (engine: "local" | "api", apiConfig?: { url: string; key: string; model: string }) => {
+    updateSetting("asrEngine", engine);
+    if (engine === "api" && apiConfig) {
+      updateSetting("asrApiUrl", apiConfig.url);
+      updateSetting("asrApiKey", apiConfig.key);
+      updateSetting("asrApiModel", apiConfig.model);
+    }
+    // 立即持久化
+    localStorage.setItem("vf_setup_complete", "1");
+    // 同步保存 settings 到 localStorage
+    const currentSettings = JSON.parse(localStorage.getItem("vf_settings") || "{}");
+    currentSettings.asrEngine = engine;
+    if (engine === "api" && apiConfig) {
+      currentSettings.asrApiUrl = apiConfig.url;
+      currentSettings.asrApiKey = apiConfig.key;
+      currentSettings.asrApiModel = apiConfig.model;
+    }
+    localStorage.setItem("vf_settings", JSON.stringify(currentSettings));
+    setShowSetupWizard(false);
+    // 如果是 local 模式，引擎已在 wizard 里下载完成，直接 idle
+    if (engine === "local") {
+      setStatus("idle");
+    }
+  };
 
   const statusRef = useRef(status);
   const startRecordingRef = useRef<any>(null);
@@ -264,19 +300,6 @@ function App() {
     invoke("set_blacklist", { blacklist: list }).catch(console.error);
   }, [settings.blacklistStr]);
 
-  // 初始化时等待动画后隐藏主窗口
-  const isInitialBootRef = useRef(true);
-  useEffect(() => {
-    if (status === "idle" && isInitialBootRef.current) {
-      isInitialBootRef.current = false;
-      if (windowLabel === "main") {
-        // 给用户1.5秒时间看“后台已就绪”然后隐藏
-        setTimeout(() => {
-          getCurrentWindow().hide().catch(console.error);
-        }, 1500);
-      }
-    }
-  }, [status, windowLabel]);
 
   // 当历史记录变化，或状态恢复空闲时，更新展示文本
   useEffect(() => {
@@ -782,8 +805,8 @@ function App() {
         }
       }
 
-      // 如果未配置 AI 密钥，则跳过 AI 润色，作为纯听写工具直接成功录入
-      if (!settings.apiKey.trim()) {
+      // 如果未配置 AI 密钥或关闭了 AI 优化，则跳过 AI 润色，作为纯听写工具直接成功录入
+      if (!settings.apiKey.trim() || !settings.enableOptimization) {
         addHistoryItem({ id: Math.random().toString(36).substr(2, 9), timestamp: Date.now(), rawText: finalText, refinedText: finalText, style: settings.promptStyle, success: false });
         setStatus("success");
         setTimeout(() => {
@@ -801,7 +824,9 @@ function App() {
         model: settings.modelName, 
         promptStyle: settings.promptStyle, 
         appName: activeAppRef.current,
-        hotWords: settings.hotWords 
+        hotWords: settings.hotWords,
+        temperature: settings.temperature,
+        maxTokens: settings.maxTokens
       };
       
       try {
@@ -853,7 +878,15 @@ function App() {
 
   const retryRefine = async (id: string, text: string, style: string) => {
     if (!settings.apiKey) return;
-    const llmConfig: LLMConfig = { apiKey: settings.apiKey, baseUrl: settings.baseUrl, model: settings.modelName, promptStyle: style, appName: activeAppRef.current };
+    const llmConfig: LLMConfig = { 
+      apiKey: settings.apiKey, 
+      baseUrl: settings.baseUrl, 
+      model: settings.modelName, 
+      promptStyle: style, 
+      appName: activeAppRef.current,
+      temperature: settings.temperature,
+      maxTokens: settings.maxTokens
+    };
     
     const refined = await refineText(text, llmConfig);
     updateHistoryItem(id, { refinedText: refined, success: true });
@@ -935,6 +968,11 @@ function App() {
         </div>
       </div>
     );
+  }
+
+  // 首次启动引导
+  if (showSetupWizard && windowLabel === "main") {
+    return <SetupWizard onComplete={handleSetupComplete} />;
   }
 
   // 主窗口渲染
