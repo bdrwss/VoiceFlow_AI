@@ -55,3 +55,25 @@ pub async fn capture_screen(mode: String) -> Result<String, String> {
         Err("截图失败：未知错误".into())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_fullscreen_capture() {
+        let result = capture_screen("fullscreen".to_string()).await;
+        assert!(result.is_ok(), "Fullscreen capture failed: {:?}", result.err());
+        
+        let b64 = result.unwrap();
+        assert!(!b64.is_empty(), "Base64 string is empty");
+        
+        // Decode to ensure valid image
+        let bytes = general_purpose::STANDARD.decode(&b64).expect("Failed to decode base64");
+        std::fs::write("test_screenshot.jpg", &bytes).expect("Failed to write image file");
+        
+        let metadata = std::fs::metadata("test_screenshot.jpg").unwrap();
+        assert!(metadata.len() > 1000, "Image size is suspiciously small");
+        println!("Successfully captured and saved test_screenshot.jpg, size: {} bytes", metadata.len());
+    }
+}

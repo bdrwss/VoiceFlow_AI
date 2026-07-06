@@ -2,12 +2,99 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import { Settings } from '../hooks/useSettings';
 import "./SettingsPanel.css";
-import { Search, ChevronUp, ChevronDown, Download } from 'lucide-react';
+import { Search, ChevronUp, ChevronDown, Download, Trash2, Plus } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useModal } from './ModalContext';
 import { LLM_PROVIDERS } from '../utils/llm-providers';
 import { testConnection, checkOllamaHealth, getOllamaModels } from '../utils/llm';
+
+const formatShortcut = (e: React.KeyboardEvent | KeyboardEvent): string => {
+  const keys = [];
+  if (e.ctrlKey) keys.push("Ctrl");
+  if (e.altKey) keys.push("Alt");
+  if (e.shiftKey) keys.push("Shift");
+  if (e.metaKey) keys.push("Meta");
+  
+  const isModifierOnly = ["Control", "Alt", "Shift", "Meta", "Escape", "CapsLock"].includes(e.key);
+  if (!isModifierOnly) {
+    if (e.code === "Space") {
+      keys.push("Space");
+    } else {
+      let key = e.key.toUpperCase();
+      keys.push(key);
+    }
+  } else if (e.code === "CapsLock") {
+    keys.push("CapsLock");
+  } else if (e.key === "Control") {
+    if (e.code === "ControlRight") keys.push("RControl");
+    else keys.push("LControl");
+  } else if (e.key === "Alt") {
+    if (e.code === "AltRight") keys.push("RAlt");
+    else keys.push("LAlt");
+  }
+
+  return keys.join("+");
+};
+
+const ShortcutRecorder = ({ value, onChange }: { value: string, onChange: (v: string) => void }) => {
+  const [recording, setRecording] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (recording) {
+      inputRef.current?.focus();
+    }
+  }, [recording]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (e.key === "Escape") {
+      setRecording(false);
+      return;
+    }
+    
+    const shortcut = formatShortcut(e);
+    if (shortcut && (shortcut.includes("+") || ["CapsLock", "RControl", "LControl", "LAlt", "RAlt"].includes(shortcut))) {
+      onChange(shortcut);
+      setRecording(false);
+      inputRef.current?.blur();
+    }
+  };
+
+  return (
+    <div 
+      className={`shortcut-recorder ${recording ? 'recording' : ''}`}
+      onClick={() => setRecording(true)}
+      style={{
+        padding: '8px 12px',
+        background: recording ? 'rgba(52, 211, 153, 0.15)' : 'rgba(0,0,0,0.35)',
+        border: `1px solid ${recording ? '#34d399' : 'rgba(255,255,255,0.1)'}`,
+        borderRadius: '8px',
+        color: recording ? '#34d399' : 'var(--text-main)',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        transition: 'all 0.2s',
+        minWidth: '200px'
+      }}
+    >
+      <span>{recording ? '请按下组合键 (按 Esc 取消)' : (value || '点击录制快捷键')}</span>
+      {recording && (
+        <input 
+          ref={inputRef}
+          onKeyDown={handleKeyDown}
+          onBlur={() => setRecording(false)}
+          style={{ opacity: 0, position: 'absolute', width: 0, height: 0 }}
+        />
+      )}
+    </div>
+  );
+};
+
 interface SettingsPanelProps {
   settings: Settings;
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
@@ -283,7 +370,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 style={{ flex: 1 }}
               />
               <button 
-                className="btn secondary" 
+                className="settings-action-btn" 
                 onClick={async () => {
                   setTestStatus({ status: 'testing', msg: '测试中...' });
                   const res = await testConnection({ apiKey: settings.apiKey, baseUrl: settings.baseUrl, model: settings.modelName });
@@ -330,7 +417,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     ))}
                     <option value="custom_input">{t('settings.custom_input') || "自定义输入..."}</option>
                   </select>
-                  <button className="btn secondary icon-only" onClick={refreshOllama} title={t('settings.ollama_refresh') || "刷新模型列表"}>
+                  <button className="settings-icon-btn" onClick={refreshOllama} title={t('settings.ollama_refresh') || "刷新模型列表"}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg>
                   </button>
                   </div>
@@ -344,7 +431,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     />
                   )}
                   <button 
-                    className="btn secondary" 
+                    className="settings-action-btn" 
                     onClick={async () => {
                       setTestStatus({ status: 'testing', msg: '测试中...' });
                       const res = await testConnection({ apiKey: "", baseUrl: settings.baseUrl, model: settings.modelName, isLocal: true });
@@ -522,7 +609,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               ))}
             </select>
             <button 
-              className="btn secondary" 
+              className="settings-icon-btn" 
               onClick={() => {
                 const name = prompt("请输入新预设名称:");
                 if (!name) return;
@@ -533,11 +620,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               }}
               title="添加新预设"
             >
-              + 新增
+              <Plus size={16} />
             </button>
             {settings.customPrompts?.length > 1 && (
               <button 
-                className="btn secondary"
+                className="settings-icon-btn danger"
                 onClick={() => {
                   if (confirm(`确定要删除预设 "${settings.customPrompts.find(p => p.id === settings.promptStyle)?.name}" 吗？`)) {
                     const newPrompts = settings.customPrompts.filter(p => p.id !== settings.promptStyle);
@@ -547,7 +634,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 }}
                 title="删除当前预设"
               >
-                删除
+                <Trash2 size={16} />
               </button>
             )}
           </div>
@@ -666,13 +753,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
         <div className="input-item">
           <label>{t('settings.listen_key_label') || "触发快捷键"}</label>
-          <select value={settings.listenKey} onChange={(e) => updateSetting("listenKey", e.target.value)}>
-            <option value="RControl">{t('settings.key_rctrl') || "右 Ctrl 键 (Right Control)"}</option>
-            <option value="LControl">{t('settings.key_lctrl') || "左 Ctrl 键 (Left Control)"}</option>
-            <option value="LAlt">{t('settings.key_lalt') || "左 Alt 键 (Left Alt / Option)"}</option>
-            <option value="RAlt">{t('settings.key_ralt') || "右 Alt 键 (Right Alt)"}</option>
-            <option value="CapsLock">{t('settings.key_caps') || "大写锁定键 (CapsLock)"}</option>
-          </select>
+          <ShortcutRecorder 
+            value={settings.listenKey} 
+            onChange={(val) => updateSetting("listenKey", val)} 
+          />
         </div>
       </div>
 
@@ -687,6 +771,80 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             style={{ width: '100%', height: '60px', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'var(--text-main)', padding: '10px 14px', fontSize: '0.95rem', resize: 'vertical' }}
           />
         </div>
+      </div>
+
+      <div className="settings-group">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h3 style={{ marginBottom: 0 }}>{t('settings.smart_context') || "智能场景感知 (Smart Context Prompts)"}</h3>
+            <p className="input-tip" style={{ marginTop: '6px', marginBottom: 0 }}>{t('settings.smart_context_tip') || "根据当前所在的软件自动切换到对应的提示词风格"}</p>
+          </div>
+          <div 
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+            onClick={() => updateSetting("enableSmartContext", !settings.enableSmartContext)}
+          >
+            <div className={`toggle-switch ${settings.enableSmartContext ? 'active' : ''}`} style={{ margin: 0 }}>
+              <div className="toggle-thumb"></div>
+            </div>
+          </div>
+        </div>
+
+        {settings.enableSmartContext && (
+          <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {settings.smartContextBindings?.map((binding, index) => (
+              <div key={index} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input 
+                  type="text" 
+                  value={binding.appKeyword} 
+                  onChange={(e) => {
+                    const newBindings = [...(settings.smartContextBindings || [])];
+                    newBindings[index].appKeyword = e.target.value;
+                    updateSetting("smartContextBindings", newBindings);
+                  }}
+                  placeholder={t('settings.smart_context_app_ph') || "进程关键词 (如 WeChat)"}
+                  style={{ flex: 1, padding: '8px', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'var(--text-main)', fontSize: '0.85rem' }}
+                />
+                <select 
+                  value={binding.promptId} 
+                  onChange={(e) => {
+                    const newBindings = [...(settings.smartContextBindings || [])];
+                    newBindings[index].promptId = e.target.value;
+                    updateSetting("smartContextBindings", newBindings);
+                  }}
+                  style={{ flex: 1, padding: '8px', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'var(--text-main)', fontSize: '0.85rem' }}
+                >
+                  <option value="" disabled>选择提示词</option>
+                  {settings.customPrompts?.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <button 
+                  onClick={() => {
+                    const newBindings = settings.smartContextBindings.filter((_, i) => i !== index);
+                    updateSetting("smartContextBindings", newBindings);
+                  }}
+                  style={{ padding: '8px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  title="删除"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+            
+            <button 
+              onClick={() => {
+                const newBindings = [...(settings.smartContextBindings || []), { appKeyword: "", promptId: settings.customPrompts?.[0]?.id || "" }];
+                updateSetting("smartContextBindings", newBindings);
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                padding: '8px', background: 'rgba(52, 211, 153, 0.1)', color: '#34d399', border: '1px dashed rgba(52, 211, 153, 0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem'
+              }}
+            >
+              <Plus size={14} /> {t('settings.add_binding') || "添加场景绑定"}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="settings-group">

@@ -2,12 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow, currentMonitor, PhysicalPosition } from "@tauri-apps/api/window";
-import { LogicalSize } from "@tauri-apps/api/dpi";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
-import { transcribeAudioApi } from "./utils/api_asr";
+
 import { 
   Mic, 
   Settings, 
@@ -17,13 +15,17 @@ import {
   Check, 
   AlertTriangle,
 } from "lucide-react";
-import { AudioRecorder, float32ToWav } from "./utils/audio";
+import { float32ToWav } from "./utils/audio";
 import { refineText, LLMConfig } from "./utils/llm";
 import { writeFile } from "@tauri-apps/plugin-fs";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import "./App.css";
 
 import { useSettings } from "./hooks/useSettings";
+import { useVoiceRecording } from "./hooks/useVoiceRecording";
+import { useASR } from "./hooks/useASR";
+import { useLLMRefine } from "./hooks/useLLMRefine";
+import { useWindowManager } from "./hooks/useWindowManager";
+import { useGlobalHotkeys } from "./hooks/useGlobalHotkeys";
 import { useHistory } from "./hooks/useHistory";
 import { MainPanel } from "./components/MainPanel";
 import { HistoryPanel } from "./components/HistoryPanel";
@@ -77,12 +79,16 @@ function App() {
   const [status, setStatus] = useState<"initializing" | "idle" | "recording" | "transcribing" | "rewriting" | "success" | "error">("initializing");
   const [modelProgress, setModelProgress] = useState<number>(0);
   const [downloadStep, setDownloadStep] = useState<string>("");
-  const [windowLabel] = useState<string>(() => getCurrentWindow().label);
+  const [windowLabel] = useState<string>(() => {
+    try {
+      return getCurrentWindow().label;
+    } catch (e) {
+      return "main";
+    }
+  });
   
   const isRecordingRef = useRef(false);
-  const recorderRef = useRef<AudioRecorder | null>(null);
   const activeAppRef = useRef<string>("");
-  const recordingTimeoutRef = useRef<number | null>(null);
   const focusLostRef = useRef<boolean>(false);
   const initialWindowRef = useRef<{app_name: string | null, window_title: string | null} | null>(null);
 
@@ -138,74 +144,27 @@ function App() {
 
   // 监听来自系统托盘的菜单点击事件
   useEffect(() => {
-    const unlistenShow = listen('show', () => setActiveTab('main'));
-    const unlistenHistory = listen('history', () => setActiveTab('history'));
-    const unlistenSettings = listen('settings', () => setActiveTab('settings'));
+    let unlistens: Array<() => void> = [];
+
+    const setupListeners = async () => {
+      try {
+        const show = await listen('show', () => setActiveTab('main'));
+        const history = await listen('history', () => setActiveTab('history'));
+        const settings = await listen('settings', () => setActiveTab('settings'));
+        unlistens = [show, history, settings];
+      } catch (e) {
+        console.warn("Tauri events not available (browser mode):", e);
+      }
+    };
+
+    setupListeners();
 
     return () => {
-      unlistenShow.then(f => f());
-      unlistenHistory.then(f => f());
-      unlistenSettings.then(f => f());
+      unlistens.forEach(fn => fn());
     };
   }, []);
 
-  // 同步状态至独立浮空胶囊窗口并统一管控其显隐与自适应定位
-  useEffect(() => {
-    async function manageIndicatorWindow() {
-      if (windowLabel !== "main") return;
-      try {
-        const indicatorWin = await WebviewWindow.getByLabel("indicator");
-        if (!indicatorWin) return;
 
-        // 1. 同步广播状态数据
-        // 如果成功了，将转写内容一同发射过去展示
-        const text = status === "success" ? (refinedText || rawText) : "";
-        await indicatorWin.emit("indicator-state", { status, errorMessage, text });
-
-        // 2. 统一指挥定位与显隐
-        if (status === "recording" || status === "transcribing" || status === "rewriting") {
-          try {
-            const monitor = await currentMonitor();
-            if (monitor) {
-              const scale = monitor.scaleFactor;
-              const screenWidth = monitor.size.width / scale;
-              const screenHeight = monitor.size.height / scale;
-
-              const winWidth = 320;
-              const winHeight = 100;
-
-              const x = Math.round((screenWidth - winWidth) / 2);
-              const y = Math.round(screenHeight - winHeight - 80);
-
-              await indicatorWin.setPosition(new PhysicalPosition(Math.round(x * scale), Math.round(y * scale)));
-            }
-          } catch (posErr) {
-            console.error("Failed to position indicator window:", posErr);
-          }
-          await indicatorWin.show();
-        } else if (status === "success" || status === "error") {
-          setTimeout(async () => {
-            try {
-              await indicatorWin.hide();
-            } catch (hideErr) {
-              console.error(hideErr);
-            }
-          }, 1500);
-        } else if (status === "idle") {
-          await indicatorWin.hide();
-        }
-      } catch (e) {
-        console.error("Indicator window controller error:", e);
-      }
-    }
-    
-    manageIndicatorWindow();
-  }, [status, errorMessage, windowLabel, rawText, refinedText]);
-
-  // 初始化设备与读取历史记录
-  useEffect(() => {
-    recorderRef.current = new AudioRecorder();
-  }, []);
 
   const [retryKey, setRetryKey] = useState(0);
 
@@ -297,17 +256,6 @@ function App() {
     }
   };
 
-  const statusRef = useRef(status);
-  const startRecordingRef = useRef<any>(null);
-  const stopAndProcessRef = useRef<any>(null);
-  const lastTypedLengthRef = useRef<number>(0);
-  const isChunkProcessingRef = useRef<boolean>(false);
-
-  useEffect(() => {
-    statusRef.current = status;
-    startRecordingRef.current = startRecording;
-    stopAndProcessRef.current = stopAndProcess;
-  });
 
   // 同步 blacklist 到 Rust
   useEffect(() => {
@@ -330,152 +278,9 @@ function App() {
     }
   }, [history, status]);
 
-  // 监听听写界面内容高度，自动调整窗口高度
-  useEffect(() => {
-    if (windowLabel !== "main") return;
 
-    if (activeTab === "main") {
-      const observer = new ResizeObserver((entries) => {
-        for (let entry of entries) {
-          const contentHeight = entry.borderBoxSize?.[0]?.blockSize || entry.contentRect.height;
-          // 加上顶部导航栏高度(48) + main-pane上下padding(80) + 一点缓冲
-          let desiredHeight = contentHeight + 140;
-          
-          if (desiredHeight < 350) desiredHeight = 350;
-          if (desiredHeight > 800) desiredHeight = 800;
 
-          getCurrentWindow().setSize(new LogicalSize(520, desiredHeight)).catch(console.error);
-        }
-      });
 
-      // 我们监听 main-pane 内部的主容器（可能是 workspace 或者是 loading-container）
-      const workspaceEl = document.querySelector('.main-pane > div');
-      if (workspaceEl) {
-        observer.observe(workspaceEl);
-      }
-
-      return () => {
-        observer.disconnect();
-      };
-    }
-  }, [activeTab, rawText, refinedText, status, windowLabel]);
-
-  // 监听 Rust 全局快捷键状态
-  useEffect(() => {
-    const unlisten = listen("shortcut-state", async (event) => {
-      console.log("前端收到按键状态:", event.payload);
-      if (statusRef.current === "initializing") {
-        console.log("系统正在初始化，忽略按键");
-        return;
-      }
-      
-      const payload = event.payload as { pressed: boolean; app_name?: string; window_title?: string };
-      
-      if (payload.pressed && !isRecordingRef.current) {
-        console.log("准备开始录音... 目标应用:", payload.app_name);
-        if (payload.app_name) {
-          activeAppRef.current = payload.app_name;
-        } else {
-          activeAppRef.current = "";
-        }
-        // 按下快捷键 -> 开始录音
-        await startRecordingRef.current();
-      } else if (!payload.pressed && isRecordingRef.current) {
-        console.log("准备停止录音并处理...");
-        // 松开快捷键 -> 停止录音并处理
-        await stopAndProcessRef.current();
-      }
-    });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
-
-  // 监听实时音量并广播给独立小药丸窗口
-  useEffect(() => {
-    let intervalId: any;
-    let indicatorWin: any = null;
-
-    async function setupVolumeTracker() {
-      if (status !== "recording" || windowLabel !== "main") return;
-      try {
-        indicatorWin = await WebviewWindow.getByLabel("indicator");
-        if (!indicatorWin) return;
-
-        // 轮询等待麦克风启动和 analyser 初始化完毕（最多等待 2 秒）
-        let analyser = null;
-        for (let i = 0; i < 20; i++) {
-          if (statusRef.current !== "recording") return; // 若中途取消则直接退出
-          analyser = recorderRef.current?.getAnalyser();
-          if (analyser) break;
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-
-        if (!analyser) {
-          console.warn("Volume tracker: AnalyserNode not ready.");
-          return;
-        }
-
-        const bufferLength = analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
-
-        // 每 50ms 采集一次音量并发送，配合 CSS 0.06s transition 实现极度平滑的波形动效
-        intervalId = setInterval(() => {
-          if (statusRef.current !== "recording") {
-            clearInterval(intervalId);
-            return;
-          }
-
-          analyser.getByteTimeDomainData(dataArray);
-
-          // 计算 RMS 音量 (时域均方根)
-          let sum = 0;
-          for (let i = 0; i < bufferLength; i++) {
-            const val = (dataArray[i] - 128) / 128;
-            sum += val * val;
-          }
-          const rms = Math.sqrt(sum / bufferLength);
-
-          // 适当调大敏感度系数 (人声均值较低，乘以 600 会有极佳的起伏效果)
-          const volume = Math.round(Math.min(100, rms * 600));
-
-          // 异步发射，绝不使用 await 阻塞定时器
-          indicatorWin.emit("indicator-volume", { volume }).catch((err: any) => {
-            console.error("Failed to emit volume:", err);
-          });
-        }, 50);
-
-      } catch (err) {
-        console.error("Volume tracker init failed:", err);
-      }
-    }
-
-    setupVolumeTracker();
-
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [status, windowLabel]);
-
-  // 监听独立浮空小药丸发过来的取消/强制提交事件
-  useEffect(() => {
-    if (windowLabel === "main") {
-      const unlisten = listen("pill-action", (event) => {
-        const payload = event.payload as { action: string };
-        if (payload.action === "cancel") {
-          cancelRecording();
-        } else if (payload.action === "commit") {
-          commitRecording();
-        }
-      });
-      return () => {
-        unlisten.then((fn) => fn());
-      };
-    }
-  }, [windowLabel]);
 
   // 静默预热机制 (Cache Pre-warming)
   // 当配置为本地 SenseVoice 时，延迟 4 秒在后台静默执行一次极短推理，将 250MB 模型加载进操作系统 Page Cache
@@ -506,408 +311,220 @@ function App() {
     };
   }, [settings.asrEngine]);
 
-  // 开始录音
-  const startRecording = async () => {
-    console.log("进入 startRecording...");
-    if (!recorderRef.current) {
-      console.log("失败: recorderRef.current 为 null");
-      return;
-    }
+
+  // ========== 核心能力 Hooks ==========
+  const isChunkProcessingRef = useRef<boolean>(false);
+  const { startTranscribe, compensatePunctuation } = useASR();
+  const { clearPlaceholder, typeText, resetTypedLength, performRefine } = useLLMRefine();
+  
+  const { startRecording: startMic, stopRecording: stopMic, getAnalyser } = useVoiceRecording({
+    onChunk: async (chunk) => {
+      if (isChunkProcessingRef.current || !isRecordingRef.current) return;
+      if (focusLostRef.current) return;
+      isChunkProcessingRef.current = true;
+      try {
+        if (initialWindowRef.current) {
+          const currentWin: any = await invoke("get_active_window_info_cmd").catch(() => null);
+          if (currentWin && currentWin.app_name !== initialWindowRef.current.app_name) {
+            console.warn("焦点窗口已偏移！中止后续流式上屏以防错乱。");
+            focusLostRef.current = true;
+            return;
+          }
+        }
+        const tempText = await startTranscribe(chunk, {
+          asrEngine: settings.asrEngine,
+          asrApiUrl: settings.asrApiUrl,
+          asrApiKey: settings.asrApiKey,
+          asrApiModel: settings.asrApiModel
+        });
+        const cleanTemp = tempText.trim();
+        if (cleanTemp && cleanTemp.length > 0 && isRecordingRef.current && !focusLostRef.current) {
+          await typeText(cleanTemp, settings.typeMode !== "clipboard", focusLostRef.current);
+          setRawText(cleanTemp);
+        }
+      } catch (e) {
+        console.error("Chunk transcription failed:", e);
+      } finally {
+        isChunkProcessingRef.current = false;
+      }
+    },
+    onTimeout: () => {
+      console.warn("录音达到 5 分钟上限，自动停止");
+      setErrorMessage("录音已达 5 分钟上限，正在为您自动转写");
+      commitRecording();
+    },
+    chunkIntervalMs: (settings.asrEngine === 'api' && settings.typeMode !== 'clipboard') ? 2000 : 0
+  });
+
+  useWindowManager({
+    windowLabel,
+    status,
+    errorMessage,
+    rawText,
+    refinedText,
+    activeTab,
+    onCancel: () => cancelRecording(),
+    onCommit: () => commitRecording(),
+    getAnalyser
+  });
+
+  // ========== UI 业务逻辑 ==========
+
+  const startRecording = async (appName?: string, windowTitle?: string) => {
     try {
       isRecordingRef.current = true;
       setStatus("recording");
       setRawText("");
       setRefinedText("");
       setErrorMessage("");
-      lastTypedLengthRef.current = 0;
+      resetTypedLength();
       isChunkProcessingRef.current = false;
-
       focusLostRef.current = false;
-      initialWindowRef.current = null;
-      try {
-        const winInfo: any = await invoke("get_active_window_info_cmd");
-        initialWindowRef.current = { app_name: winInfo.app_name, window_title: winInfo.window_title };
-      } catch (e) {
-        console.error("无法获取初始焦点窗口信息", e);
-      }
-
-      if (recordingTimeoutRef.current !== null) {
-        window.clearTimeout(recordingTimeoutRef.current);
-      }
-      invoke("duck_system_audio").catch((e) => console.error("Failed to duck audio", e));
-
-      recordingTimeoutRef.current = window.setTimeout(() => {
-        if (isRecordingRef.current) {
-          console.warn("录音达到 5 分钟上限，自动停止");
-          setErrorMessage("录音已达 5 分钟上限，正在为您自动转写");
-          if (stopAndProcessRef.current) {
-            stopAndProcessRef.current();
-          }
-        }
-      }, 5 * 60 * 1000);
-
-      // 如果不是 API 流式引擎，或开启了“纯剪贴板”模式，都不使用流式上屏
-      const isStreamingAllowed = settings.asrEngine === 'api' && settings.typeMode !== 'clipboard';
-
-      const onChunk = isStreamingAllowed ? async (chunk: Float32Array) => {
-        if (isChunkProcessingRef.current || !isRecordingRef.current) return;
-        if (focusLostRef.current) return; // 焦点已丢失，中止流式打字
-
-        isChunkProcessingRef.current = true;
-        try {
-          // 焦点校验防流式乱打字
-          if (initialWindowRef.current) {
-            const currentWin: any = await invoke("get_active_window_info_cmd").catch(() => null);
-            if (currentWin && currentWin.app_name !== initialWindowRef.current.app_name) {
-              console.warn("焦点窗口已偏移！中止后续流式上屏以防错乱。");
-              focusLostRef.current = true;
-              return;
-            }
-          }
-
-          const tempText = await transcribeAudioApi(chunk, {
-            apiUrl: settings.asrApiUrl,
-            apiKey: settings.asrApiKey,
-            model: settings.asrApiModel
-          });
-          const cleanTemp = tempText.trim();
-          if (cleanTemp && cleanTemp.length > 0 && isRecordingRef.current && !focusLostRef.current) {
-            // Replace the previously typed text with the new temp text
-            if (lastTypedLengthRef.current === 0) {
-              await invoke("simulate_typing", { text: cleanTemp });
-            } else {
-              await invoke("replace_with_ai_text", {
-                originalLen: lastTypedLengthRef.current,
-                newText: cleanTemp
-              });
-            }
-            lastTypedLengthRef.current = cleanTemp.length;
-            setRawText(cleanTemp);
-          }
-        } catch (e) {
-          console.error("Chunk transcription failed:", e);
-        } finally {
-          isChunkProcessingRef.current = false;
-        }
-      } : undefined;
-
-      await recorderRef.current.start(onChunk, settings.asrEngine === 'api' ? 2000 : 0);
-      console.log("麦克风启动成功");
+      activeAppRef.current = appName || "";
+      initialWindowRef.current = appName ? { app_name: appName, window_title: windowTitle || "" } : null;
+      
+      await startMic();
     } catch (err: any) {
       console.error("麦克风启动抛出异常:", err);
       isRecordingRef.current = false;
-      if (recordingTimeoutRef.current !== null) {
-        window.clearTimeout(recordingTimeoutRef.current);
-        recordingTimeoutRef.current = null;
-      }
-      let friendlyError = "无法启动麦克风：" + err.message;
-      const errMsg = err.message?.toLowerCase() || '';
-      if (err.name === 'NotAllowedError' || errMsg.includes('permission denied')) {
-        friendlyError = "无法启动录音：麦克风权限被拒绝。请在系统偏好设置中允许应用访问麦克风。";
-      } else if (err.name === 'NotFoundError' || errMsg.includes('not found')) {
-        friendlyError = "无法启动录音：未检测到可用麦克风设备，请检查连接。";
-      } else if (err.name === 'NotReadableError' || errMsg.includes('in use') || errMsg.includes('not readable')) {
-        friendlyError = "无法启动录音：麦克风正被其他程序独占或发生硬件异常。";
-      }
-      setErrorMessage(friendlyError);
+      setErrorMessage("无法启动麦克风：" + err.message);
       setStatus("error");
     }
   };
 
-  // 取消当前录音
   const cancelRecording = async () => {
-    if (recorderRef.current && isRecordingRef.current) {
-      recorderRef.current.stop();
+    if (isRecordingRef.current) {
+      stopMic();
       isRecordingRef.current = false;
-      
-      if (recordingTimeoutRef.current !== null) {
-        window.clearTimeout(recordingTimeoutRef.current);
-        recordingTimeoutRef.current = null;
-      }
-      invoke("restore_system_audio").catch((e) => console.error("Failed to restore audio", e));
-      
-      // 取消时，清除之前打出的占位符
-      if (lastTypedLengthRef.current > 0) {
-        if (settings.typeMode !== "clipboard" && !focusLostRef.current) {
-          await invoke("replace_with_ai_text", {
-            originalLen: lastTypedLengthRef.current,
-            newText: ""
-          });
-          lastTypedLengthRef.current = 0;
-        } else {
-          await writeText("");
-          lastTypedLengthRef.current = 0;
-        }
-      }
-      
+      await clearPlaceholder(settings.typeMode !== "clipboard" && !focusLostRef.current);
       setStatus("idle");
     }
   };
 
-  // 强制立即提交识别
   const commitRecording = async () => {
-    await stopAndProcess();
-  };
-
-  // 停止录音并进行 ASR 识别和 AI 润色
-  const stopAndProcess = async () => {
-    console.log("进入 stopAndProcess...");
-    if (!recorderRef.current || !isRecordingRef.current) {
-      console.log("失败: 状态不正确", { hasRecorder: !!recorderRef.current, isRecording: isRecordingRef.current });
-      return;
-    }
+    if (!isRecordingRef.current) return;
     isRecordingRef.current = false;
-    if (recordingTimeoutRef.current !== null) {
-      window.clearTimeout(recordingTimeoutRef.current);
-      recordingTimeoutRef.current = null;
-    }
-    invoke("restore_system_audio").catch((e) => console.error("Failed to restore audio", e));
     setStatus("transcribing");
+    
+    const { audioData, isValid } = stopMic();
+    const shouldSimulateTyping = settings.typeMode !== "clipboard" && !focusLostRef.current;
 
-    // 辅助函数：清除目标窗口中残留的占位符文本
-    const clearPlaceholder = async () => {
-      if (lastTypedLengthRef.current > 0) {
-        try {
-          await invoke("replace_with_ai_text", {
-            originalLen: lastTypedLengthRef.current,
-            newText: ""
-          });
-        } catch (e) {
-          console.error("清除占位符失败:", e);
-        }
-        lastTypedLengthRef.current = 0;
-      }
-    };
-
-    // 如果不是 API 流式引擎，原本替换为正在转写的占位符的功能已删除
+    if (!isValid) {
+      await clearPlaceholder(shouldSimulateTyping);
+      setErrorMessage("收音无效（音量过低或仅有瞬时噪音）。");
+      setStatus("error");
+      return; 
+    }
 
     try {
-      // 1. 获取录音音频 data
-      const audioData = recorderRef.current.stop();
-      console.log("麦克风已停止，获取到音频长度:", audioData.length);
+      const text = await startTranscribe(audioData, {
+        asrEngine: settings.asrEngine,
+        asrApiUrl: settings.asrApiUrl,
+        asrApiKey: settings.asrApiKey,
+        asrApiModel: settings.asrApiModel
+      });
       
-      // VAD 静音与噪音拦截 (滑动窗口 RMS 算法)
-      const VAD_THRESHOLD_MAX = 0.01;
-      const VAD_THRESHOLD_RMS = 0.002;
-      const VAD_WINDOW_SIZE = 800; // 50ms at 16000Hz
-      const VAD_REQUIRED_WINDOWS = 3; // 至少连续 150ms 达标判定为人声
-
-      let globalMax = 0;
-      let hasVoice = false;
-      let consecutiveVoiceFrames = 0;
-
-      for (let i = 0; i < audioData.length; i += VAD_WINDOW_SIZE) {
-        let sumSquares = 0;
-        let frameMax = 0;
-        let count = 0;
-        
-        for (let j = 0; j < VAD_WINDOW_SIZE && i + j < audioData.length; j++) {
-          const val = audioData[i + j];
-          const abs = Math.abs(val);
-          if (abs > frameMax) frameMax = abs;
-          if (abs > globalMax) globalMax = abs;
-          sumSquares += val * val;
-          count++;
-        }
-        
-        const rms = Math.sqrt(sumSquares / count);
-        if (rms >= VAD_THRESHOLD_RMS && frameMax >= VAD_THRESHOLD_MAX) {
-          consecutiveVoiceFrames++;
-          if (consecutiveVoiceFrames >= VAD_REQUIRED_WINDOWS) {
-            hasVoice = true;
-            break; // 已经确认包含有效人声，无需继续遍历
-          }
-        } else {
-          consecutiveVoiceFrames = 0; // 连续性中断
-        }
-      }
-
-      if (audioData.length === 0 || globalMax < 0.005) {
-        console.warn("VAD 拦截：全静音或音量极低", { globalMax });
-        await clearPlaceholder();
-        setErrorMessage("麦克风收音音量过低，请靠近麦克风或大声点。");
-        setStatus("error");
-        return; 
-      }
-
-      if (!hasVoice) {
-        console.warn("VAD 拦截：瞬时噪音（如键盘敲击），静默拦截");
-        await clearPlaceholder();
-        setStatus("idle");
-        return; 
-      }
-
-      console.log("正在转写音频，大小: ", audioData.length);
-      
-      let text = "";
-      if (settings.asrEngine === 'api') {
-        text = await transcribeAudioApi(audioData, {
-          apiUrl: settings.asrApiUrl,
-          apiKey: settings.asrApiKey,
-          model: settings.asrApiModel
-        });
-      } else {
-        // 使用 SenseVoice Small 原生推理
-        const wavBytes = float32ToWav(audioData, 16000);
-        const dataDirPath = await appDataDir();
-        const wavPath = await join(dataDirPath, "temp_sensevoice.wav");
-        
-        try {
-          await writeFile(wavPath, wavBytes);
-          const rawResult: string = await invoke("transcribe_sensevoice", { audioPath: wavPath });
-          console.log("SenseVoice Result:", rawResult);
-          // Rust 端已完成输出解析和 SenseVoice token 清洗，直接使用
-          text = rawResult.trim();
-        } catch (e: any) {
-          console.error("SenseVoice error:", e);
-          await clearPlaceholder();
-          setErrorMessage("SenseVoice 推理出错：" + (e.message || e));
-          setStatus("error");
-          return;
-        }
-      }
-      
-      const cleanText = text.trim();
-      
-      if (!cleanText) {
-        await clearPlaceholder();
+      if (!text) {
+        await clearPlaceholder(shouldSimulateTyping);
         setErrorMessage("没有检测到有效说话声，请重试。");
         setStatus("idle");
         return;
       }
-
-      // 2. 如果未配置 AI 密钥，则开启离线兜底标点补偿 (简单判断句尾是否有标点)
-      let finalText = cleanText;
-      if (!settings.apiKey.trim()) {
-        const lastChar = finalText.slice(-1);
-        const punctuationRegex = /[。！？.!?]/;
-        if (!punctuationRegex.test(lastChar)) {
-          // 基础中英文末尾补全
-          if (/^[a-zA-Z0-9\s]+$/.test(finalText.slice(-3))) {
-            finalText += ".";
-          } else {
-            finalText += "。";
-          }
-        }
-      }
-
+      
+      const finalText = compensatePunctuation(text, !!settings.apiKey.trim() || settings.llmProvider === "ollama");
       setRawText(finalText);
 
-      // 3. 将最终的原文打出
-      const shouldSimulateTyping = settings.typeMode !== "clipboard" && !focusLostRef.current;
-
-      if (shouldSimulateTyping) {
-        if (lastTypedLengthRef.current > 0) {
-          // 如果在流式阶段已经上屏过临时文本，则替换成完整的最终识别文本
-          await invoke("replace_with_ai_text", {
-            originalLen: lastTypedLengthRef.current,
-            newText: finalText
-          });
-        } else {
-          // 如果没有（例如使用了本地模型），则直接打出
-          await invoke("simulate_typing", { text: finalText });
-        }
-        lastTypedLengthRef.current = finalText.length;
-      } else {
-        await writeText(finalText);
-        if (focusLostRef.current) {
+      try {
+        await typeText(finalText, shouldSimulateTyping, focusLostRef.current);
+      } catch (e: any) {
+        if (e.message === "FOCUS_LOST") {
           setErrorMessage("检测到焦点转移，防止乱打字已中断上屏。文本已保存至剪贴板，请手动粘贴。");
           setStatus("error");
-          setTimeout(() => {
-            setStatus("idle");
-            setErrorMessage("");
-          }, 4000);
+          setTimeout(() => { setStatus("idle"); setErrorMessage(""); }, 4000);
           return;
         }
       }
 
-      // 如果未配置 AI 密钥或关闭了 AI 优化，则跳过 AI 润色，作为纯听写工具直接成功录入
+      let targetPromptStyle = settings.promptStyle;
+      if (settings.enableSmartContext && activeAppRef.current) {
+        const appNameLower = activeAppRef.current.toLowerCase();
+        const matchedBinding = settings.smartContextBindings?.find(b => 
+          b.appKeyword && appNameLower.includes(b.appKeyword.toLowerCase())
+        );
+        if (matchedBinding && matchedBinding.promptId) {
+          targetPromptStyle = matchedBinding.promptId;
+          console.log(`Smart Context Match: ${activeAppRef.current} -> ${targetPromptStyle}`);
+        }
+      }
+
       if ((!settings.apiKey.trim() && settings.llmProvider !== "ollama") || !settings.enableOptimization) {
-        addHistoryItem({ id: Math.random().toString(36).substr(2, 9), timestamp: Date.now(), rawText: finalText, refinedText: finalText, style: settings.promptStyle, success: false });
+        addHistoryItem({ id: Math.random().toString(36).substr(2, 9), timestamp: Date.now(), rawText: finalText, refinedText: finalText, style: targetPromptStyle, success: false, appName: activeAppRef.current });
         setStatus("success");
-        setTimeout(() => {
-          setStatus("idle");
-        }, 1500);
+        setTimeout(() => setStatus("idle"), 1500);
         return;
       }
 
-      // 3.5 屏幕感知截图 (Screen-Aware)
       let screenshotBase64: string | undefined = undefined;
       if (settings.enableScreenCapture) {
         try {
-          console.log(`正在获取屏幕截图 (模式: ${settings.screenCaptureMode})...`);
           screenshotBase64 = await invoke<string>("capture_screen", { mode: settings.screenCaptureMode });
-          console.log("屏幕截图获取成功，大小: ", screenshotBase64.length);
-        } catch (err: any) {
-          console.warn("屏幕感知截图失败，将降级为纯文本润色:", err);
-          // 不中断主流程，静默降级
+        } catch (err) {
+          console.warn("屏幕感知截图失败，降级为纯文本润色:", err);
         }
       }
 
-      // 4. 开始 AI 润色
       setStatus("rewriting");
-
-      const currentPromptPreset = settings.customPrompts?.find(p => p.id === settings.promptStyle);
-      const llmConfig: LLMConfig = { 
-        apiKey: settings.apiKey, 
-        baseUrl: settings.baseUrl, 
-        model: settings.modelName, 
-        promptStyle: settings.promptStyle, 
-        customPromptText: currentPromptPreset?.prompt,
-        appName: activeAppRef.current,
-        hotWords: settings.hotWords,
-        temperature: settings.temperature,
-        maxTokens: settings.maxTokens,
-        isLocal: settings.llmProvider === "ollama",
-        screenshotBase64
-      };
-      
       try {
-        const refined = await refineText(finalText, llmConfig);
+        const currentPromptPreset = settings.customPrompts?.find(p => p.id === targetPromptStyle);
+        const refined = await performRefine(finalText, {
+          apiKey: settings.apiKey, 
+          baseUrl: settings.baseUrl, 
+          model: settings.modelName, 
+          promptStyle: targetPromptStyle, 
+          customPromptText: currentPromptPreset?.prompt,
+          appName: activeAppRef.current,
+          hotWords: settings.hotWords,
+          temperature: settings.temperature,
+          maxTokens: settings.maxTokens,
+          isLocal: settings.llmProvider === "ollama",
+          screenshotBase64
+        });
         setRefinedText(refined);
         
-        // 5. 用粘贴瞬时替换为 AI 优化文本
-        if (shouldSimulateTyping) {
-          await invoke("replace_with_ai_text", {
-            originalLen: lastTypedLengthRef.current,
-            newText: refined
-          });
-          lastTypedLengthRef.current = refined.length;
-        } else {
-          await writeText(refined);
-          if (focusLostRef.current) {
-            setErrorMessage("检测到焦点转移，防止乱打字已中断上屏。文本已保存至剪贴板，请手动粘贴。");
+        try {
+          await typeText(refined, shouldSimulateTyping, focusLostRef.current);
+        } catch (e: any) {
+          if (e.message === "FOCUS_LOST") {
+            setErrorMessage("检测到焦点转移，文本已保存至剪贴板，请手动粘贴。");
             setStatus("error");
-            setTimeout(() => {
-              setStatus("idle");
-              setErrorMessage("");
-            }, 4000);
+            setTimeout(() => { setStatus("idle"); setErrorMessage(""); }, 4000);
             return;
           }
         }
-
-        // 成功，记入历史
-        addHistoryItem({ id: Math.random().toString(36).substr(2, 9), timestamp: Date.now(), rawText: finalText, refinedText: refined, style: settings.promptStyle, success: true });
-        setStatus("success");
         
-        setTimeout(() => {
-          setStatus("idle");
-        }, 1500);
-
-      } catch (err: any) {
+        addHistoryItem({ id: Math.random().toString(36).substr(2, 9), timestamp: Date.now(), rawText: finalText, refinedText: refined, style: targetPromptStyle, success: true, appName: activeAppRef.current });
+        setStatus("success");
+        setTimeout(() => setStatus("idle"), 1500);
+      } catch (err) {
         console.error(err);
-        addHistoryItem({ id: Math.random().toString(36).substr(2, 9), timestamp: Date.now(), rawText: finalText, refinedText: finalText, style: settings.promptStyle, success: false });
+        addHistoryItem({ id: Math.random().toString(36).substr(2, 9), timestamp: Date.now(), rawText: finalText, refinedText: finalText, style: settings.promptStyle, success: false, appName: activeAppRef.current });
         setErrorMessage("网络异常，AI 润色未成功，已为您保留识别原文。");
         setStatus("error");
       }
-
     } catch (err: any) {
       console.error(err);
-      await clearPlaceholder();
+      await clearPlaceholder(shouldSimulateTyping);
       setErrorMessage("识别出错：" + (err.message || err));
       setStatus("idle");
     }
   };
+
+  useGlobalHotkeys({
+    status,
+    isRecording: isRecordingRef.current,
+    onPress: startRecording,
+    onRelease: commitRecording
+  });
 
   const retryRefine = async (item: { id: string; rawText: string; style: string }) => {
     if (!settings.apiKey && settings.llmProvider !== "ollama") return;

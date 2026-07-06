@@ -146,10 +146,15 @@
       "zhipu": { "name": "智谱 AI (GLM)", "desc": "智谱 GLM 系列，flash 版免费" },
       "ollama": { "name": "Ollama (本地部署)", "desc": "本地运行，无需 API Key" },
       "custom": { "name": "自定义 (Custom)", "desc": "手动填写任何 OpenAI 兼容接口" }
-    }
+    },
+    "smart_context": "智能场景感知 (Smart Context Prompts)",
+    "smart_context_tip": "根据当前所在的软件自动切换到对应的提示词风格",
+    "smart_context_app_ph": "进程关键词 (如 WeChat)",
+    "add_binding": "添加场景绑定"
   },
   "history": {
     "title": "听写与优化记录",
+    "search_ph": "搜索历史记录 (关键字/应用名称)...",
     "clear_all": "清空全部",
     "total_chars": "累计生成字数",
     "chars": "字",

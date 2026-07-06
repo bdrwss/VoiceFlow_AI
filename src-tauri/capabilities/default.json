@@ -17,6 +17,7 @@
     "fs:default",
     "fs:allow-appdata-write",
     "fs:allow-appdata-read",
+    "dialog:default",
     "core:window:allow-set-size"
   ]
 }

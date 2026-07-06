@@ -151,15 +151,86 @@ fn replace_with_ai_text(original_len: usize, new_text: String) -> Result<(), Str
     Ok(())
 }
 
-// 辅助函数：根据目标字符串映射到 rdev::Key
-fn map_target_key(s: &str) -> rdev::Key {
+#[derive(Debug, Clone, PartialEq)]
+struct ShortcutConfig {
+    ctrl: bool,
+    shift: bool,
+    alt: bool,
+    meta: bool,
+    main_key: rdev::Key,
+}
+
+fn parse_shortcut(s: &str) -> ShortcutConfig {
+    let mut config = ShortcutConfig {
+        ctrl: false,
+        shift: false,
+        alt: false,
+        meta: false,
+        main_key: rdev::Key::Unknown(0),
+    };
+
+    let parts: Vec<&str> = s.split('+').collect();
+    for p in parts {
+        match p {
+            "Ctrl" => config.ctrl = true,
+            "Shift" => config.shift = true,
+            "Alt" => config.alt = true,
+            "Meta" => config.meta = true,
+            _ => config.main_key = string_to_rdev_key(p),
+        }
+    }
+    config
+}
+
+fn string_to_rdev_key(s: &str) -> rdev::Key {
     match s {
-        "RControl" => rdev::Key::ControlRight,
-        "LControl" => rdev::Key::ControlLeft,
-        "LAlt" => rdev::Key::Alt,
-        "RAlt" => rdev::Key::AltGr,
-        "CapsLock" => rdev::Key::CapsLock,
-        _ => rdev::Key::ControlRight, // 默认 fallback
+        "A" => rdev::Key::KeyA,
+        "B" => rdev::Key::KeyB,
+        "C" => rdev::Key::KeyC,
+        "D" => rdev::Key::KeyD,
+        "E" => rdev::Key::KeyE,
+        "F" => rdev::Key::KeyF,
+        "G" => rdev::Key::KeyG,
+        "H" => rdev::Key::KeyH,
+        "I" => rdev::Key::KeyI,
+        "J" => rdev::Key::KeyJ,
+        "K" => rdev::Key::KeyK,
+        "L" => rdev::Key::KeyL,
+        "M" => rdev::Key::KeyM,
+        "N" => rdev::Key::KeyN,
+        "O" => rdev::Key::KeyO,
+        "P" => rdev::Key::KeyP,
+        "Q" => rdev::Key::KeyQ,
+        "R" => rdev::Key::KeyR,
+        "S" => rdev::Key::KeyS,
+        "T" => rdev::Key::KeyT,
+        "U" => rdev::Key::KeyU,
+        "V" => rdev::Key::KeyV,
+        "W" => rdev::Key::KeyW,
+        "X" => rdev::Key::KeyX,
+        "Y" => rdev::Key::KeyY,
+        "Z" => rdev::Key::KeyZ,
+        "0" => rdev::Key::Num0,
+        "1" => rdev::Key::Num1,
+        "2" => rdev::Key::Num2,
+        "3" => rdev::Key::Num3,
+        "4" => rdev::Key::Num4,
+        "5" => rdev::Key::Num5,
+        "6" => rdev::Key::Num6,
+        "7" => rdev::Key::Num7,
+        "8" => rdev::Key::Num8,
+        "9" => rdev::Key::Num9,
+        "SPACE" | "Space" => rdev::Key::Space,
+        "RCONTROL" | "RControl" => rdev::Key::ControlRight,
+        "LCONTROL" | "LControl" => rdev::Key::ControlLeft,
+        "LALT" | "LAlt" => rdev::Key::Alt,
+        "RALT" | "RAlt" => rdev::Key::AltGr,
+        "CAPSLOCK" | "CapsLock" => rdev::Key::CapsLock,
+        "ESCAPE" | "Escape" => rdev::Key::Escape,
+        "ENTER" | "Enter" => rdev::Key::Return,
+        "TAB" | "Tab" => rdev::Key::Tab,
+        "BACKSPACE" | "Backspace" => rdev::Key::Backspace,
+        _ => rdev::Key::Unknown(0),
     }
 }
 
@@ -181,12 +252,39 @@ fn get_active_window_info_cmd() -> Result<KeyStatePayload, String> {
     })
 }
 
+struct ModifierState {
+    ctrl: bool,
+    shift: bool,
+    alt: bool,
+    meta: bool,
+}
+
+impl ModifierState {
+    fn update(&mut self, key: rdev::Key, pressed: bool) {
+        match key {
+            rdev::Key::ControlLeft | rdev::Key::ControlRight => self.ctrl = pressed,
+            rdev::Key::ShiftLeft | rdev::Key::ShiftRight => self.shift = pressed,
+            rdev::Key::Alt | rdev::Key::AltGr => self.alt = pressed,
+            rdev::Key::MetaLeft | rdev::Key::MetaRight => self.meta = pressed,
+            _ => {}
+        }
+    }
+    
+    fn matches(&self, config: &ShortcutConfig) -> bool {
+        self.ctrl == config.ctrl &&
+        self.shift == config.shift &&
+        self.alt == config.alt &&
+        self.meta == config.meta
+    }
+}
+
 // 全局按键监听线程 (使用 rdev 事件驱动)
 fn start_key_listener(app_handle: AppHandle) {
     thread::spawn(move || {
-        let mut last_state = false;
+        let mut is_recording_triggered = false;
+        let mut mods = ModifierState { ctrl: false, shift: false, alt: false, meta: false };
+        let mut main_key_pressed = false;
 
-        // rdev::listen 会阻塞当前线程
         let callback = move |event: Event| {
             let (target_key_str, blacklist) =
                 if let Some(state) = app_handle.try_state::<AppState>() {
@@ -197,11 +295,18 @@ fn start_key_listener(app_handle: AppHandle) {
                     ("RControl".to_string(), vec![])
                 };
 
-            let target_key = map_target_key(&target_key_str);
+            let config = parse_shortcut(&target_key_str);
 
             match event.event_type {
-                EventType::KeyPress(key) if key == target_key => {
-                    if !last_state {
+                EventType::KeyPress(key) => {
+                    mods.update(key, true);
+                    
+                    if key == config.main_key {
+                        main_key_pressed = true;
+                    }
+
+                    // 触发条件：没有触发录音，并且 (修饰键完全匹配 且 主键被按下)
+                    if !is_recording_triggered && mods.matches(&config) && main_key_pressed {
                         let (app_name, window_title) = get_active_window_info();
 
                         // 黑名单拦截判定
@@ -215,7 +320,7 @@ fn start_key_listener(app_handle: AppHandle) {
 
                         if is_blocked {
                             info!("Shortcut blocked due to blacklist. App: {:?}", app_name);
-                            last_state = true;
+                            is_recording_triggered = true;
                             return;
                         }
 
@@ -228,21 +333,30 @@ fn start_key_listener(app_handle: AppHandle) {
                                 window_title,
                             },
                         );
-                        last_state = true;
+                        is_recording_triggered = true;
                     }
                 }
-                EventType::KeyRelease(key) if key == target_key => {
-                    if last_state {
-                        info!("Shortcut released event emitted!");
-                        let _ = app_handle.emit(
-                            "shortcut-state",
-                            KeyStatePayload {
-                                pressed: false,
-                                app_name: None,
-                                window_title: None,
-                            },
-                        );
-                        last_state = false;
+                EventType::KeyRelease(key) => {
+                    mods.update(key, false);
+                    
+                    if key == config.main_key {
+                        main_key_pressed = false;
+                    }
+
+                    // 结束条件：只要处于录音状态，并且当前状态不再完全匹配 (主键松开或者任意所需修饰键松开)
+                    if is_recording_triggered {
+                        if !main_key_pressed || !mods.matches(&config) {
+                            info!("Shortcut released event emitted!");
+                            let _ = app_handle.emit(
+                                "shortcut-state",
+                                KeyStatePayload {
+                                    pressed: false,
+                                    app_name: None,
+                                    window_title: None,
+                                },
+                            );
+                            is_recording_triggered = false;
+                        }
                     }
                 }
                 _ => {}
@@ -270,6 +384,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_opener::init())

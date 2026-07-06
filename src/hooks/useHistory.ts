@@ -7,6 +7,7 @@ export interface HistoryItem {
   refinedText: string;
   style: string;
   success: boolean;
+  appName?: string;
 }
 
 export function useHistory() {

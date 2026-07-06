@@ -146,10 +146,15 @@
       "zhipu": { "name": "Zhipu AI (GLM)", "desc": "Zhipu GLM series, flash version is free" },
       "ollama": { "name": "Ollama (Local)", "desc": "Runs locally, no API Key required" },
       "custom": { "name": "Custom", "desc": "Manually enter any OpenAI-compatible API" }
-    }
+    },
+    "smart_context": "Smart Context Prompts",
+    "smart_context_tip": "Automatically switch prompt styles based on the active application window",
+    "smart_context_app_ph": "Process keyword (e.g. WeChat)",
+    "add_binding": "Add Context Binding"
   },
   "history": {
     "title": "Dictation & Refinement History",
+    "search_ph": "Search history (keywords/app name)...",
     "clear_all": "Clear All",
     "total_chars": "Total Characters",
     "chars": "chars",

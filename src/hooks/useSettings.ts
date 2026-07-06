@@ -8,6 +8,11 @@ export interface PromptPreset {
   prompt: string;
 }
 
+export interface SmartContextBinding {
+  appKeyword: string;
+  promptId: string;
+}
+
 export interface Settings {
   llmProvider: string;
   apiKey: string;
@@ -31,6 +36,8 @@ export interface Settings {
   uiLanguage: string;
   enableScreenCapture: boolean;
   screenCaptureMode: "window" | "fullscreen";
+  enableSmartContext: boolean;
+  smartContextBindings: SmartContextBinding[];
 }
 
 const defaultSettings: Settings = {
@@ -60,7 +67,9 @@ const defaultSettings: Settings = {
   enableOptimization: true,
   uiLanguage: "zh-CN",
   enableScreenCapture: false,
-  screenCaptureMode: "window"
+  screenCaptureMode: "window",
+  enableSmartContext: false,
+  smartContextBindings: []
 };
 
 export function useSettings() {
@@ -111,6 +120,10 @@ export function useSettings() {
           autoStart: localStorage.getItem("vf_auto_start") === "true" || defaultSettings.autoStart,
           enableOptimization: localStorage.getItem("vf_enable_optimization") !== "false",
           uiLanguage: localStorage.getItem("vf_ui_language") || defaultSettings.uiLanguage,
+          enableSmartContext: defaultSettings.enableSmartContext,
+          smartContextBindings: defaultSettings.smartContextBindings,
+          enableScreenCapture: defaultSettings.enableScreenCapture,
+          screenCaptureMode: defaultSettings.screenCaptureMode,
         };
         saveSettingsToStore(legacy);
         return legacy;
