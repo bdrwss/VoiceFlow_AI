@@ -297,67 +297,41 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <>
             <div className="input-item">
               <label>本地识别模型 (Offline ASR Model)</label>
-              <select value={settings.whisperModel} onChange={(e) => updateSetting("whisperModel", e.target.value)}>
-                <option value="sensevoice-small">SenseVoice Small (极速多语言，强烈推荐，首次需下载 ~250MB)</option>
-                <option value="Xenova/whisper-tiny">whisper-tiny (极速，75MB，适合：核显/低配设备)</option>
-                <option value="Xenova/whisper-base">whisper-base (实用，140MB，适合：常规轻薄本/4核 CPU/主流核显)</option>
-                <option value="Xenova/whisper-small">whisper-small (高准，460MB，适合：中高配PC/8核 CPU/独立显卡)</option>
-                <option value="Xenova/whisper-medium">whisper-medium (精细，1.5GB，适合：游戏本/工作站/高性能独显)</option>
-              </select>
               <div className="input-tip" style={{ marginTop: '8px', lineHeight: '1.5', fontSize: '11px', color: 'rgba(255,255,255,0.45)' }}>
-                <span style={{ fontWeight: 'bold', color: 'rgba(255,255,255,0.65)' }}>各模型硬件配置推荐：</span>
-                <ul style={{ margin: '4px 0 0 0', paddingLeft: '16px' }}>
-                  <li style={{ color: '#34d399', marginBottom: '4px' }}><b>SenseVoice Small (~250MB)</b>: 极速多语言模型，基于底层引擎原生推理。任意配置均可秒级响应，强烈推荐首选。</li>
-                  <li><b>tiny (75MB)</b>: 任意配置可用。2GB 内存以上。</li>
-                  <li><b>base (140MB)</b>: 4核以上 CPU 或 Intel Xe/AMD 核显。4GB 内存以上。</li>
-                  <li><b>small (460MB)</b>: 8核以上 CPU 或中端核显/独显。8GB 内存以上。</li>
-                  <li><b>medium (1.5GB)</b>: 16核以上高性能 CPU 或 NVIDIA/AMD 独显。16GB 内存以上（若在低算力设备运行可能产生 5~10 秒推理延迟）。</li>
-                </ul>
-                <p style={{ margin: '6px 0 0 0', color: 'rgba(255,255,255,0.35)' }}>首次切换并保存设置后，系统将自动在后台下载对应权重（仅需下载一次）。</p>
-                {settings.whisperModel === "sensevoice-small" && (
-                  <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: 'rgba(255,255,255,0.8)' }}>SenseVoice 模型状态</span>
-                      <button 
-                        onClick={forceRedownloadSenseVoice} 
-                        disabled={isDownloadingModel}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '6px',
-                          background: 'rgba(52, 211, 153, 0.1)', border: '1px solid rgba(52, 211, 153, 0.3)', color: '#34d399',
-                          padding: '4px 10px', borderRadius: '4px', cursor: isDownloadingModel ? 'not-allowed' : 'pointer', fontSize: '11px'
-                        }}
-                      >
-                        <Download size={12} />
-                        {isDownloadingModel ? '正在下载...' : '强制重新下载'}
-                      </button>
-                    </div>
-                    {isDownloadingModel && (
-                      <div style={{ marginTop: '10px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#9ca3af', marginBottom: '4px' }}>
-                          <span>{downloadStep}</span>
-                          <span>{downloadProgress}%</span>
-                        </div>
-                        <div style={{ height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${downloadProgress}%`, background: '#34d399', transition: 'width 0.3s' }}></div>
-                        </div>
-                      </div>
-                    )}
-                    {!isDownloadingModel && downloadStep === "下载完成，已准备就绪！" && (
-                      <div style={{ marginTop: '6px', fontSize: '11px', color: '#34d399' }}>✅ 模型已成功更新</div>
-                    )}
+                <span style={{ fontWeight: 'bold', color: '#34d399' }}>当前独占引擎：SenseVoice Small (~250MB)</span>
+                <p style={{ margin: '6px 0 0 0', color: 'rgba(255,255,255,0.35)' }}>极速多语言模型，基于底层引擎原生推理。任意配置均可秒级响应。</p>
+                <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: 'rgba(255,255,255,0.8)' }}>SenseVoice 模型状态</span>
+                    <button 
+                      onClick={forceRedownloadSenseVoice} 
+                      disabled={isDownloadingModel}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        background: 'rgba(52, 211, 153, 0.1)', border: '1px solid rgba(52, 211, 153, 0.3)', color: '#34d399',
+                        padding: '4px 10px', borderRadius: '4px', cursor: isDownloadingModel ? 'not-allowed' : 'pointer', fontSize: '11px'
+                      }}
+                    >
+                      <Download size={12} />
+                      {isDownloadingModel ? '正在下载...' : '强制重新下载'}
+                    </button>
                   </div>
-                )}
+                  {isDownloadingModel && (
+                    <div style={{ marginTop: '10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#9ca3af', marginBottom: '4px' }}>
+                        <span>{downloadStep}</span>
+                        <span>{downloadProgress}%</span>
+                      </div>
+                      <div style={{ height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${downloadProgress}%`, background: '#34d399', transition: 'width 0.3s' }}></div>
+                      </div>
+                    </div>
+                  )}
+                  {!isDownloadingModel && downloadStep === "下载完成，已准备就绪！" && (
+                    <div style={{ marginTop: '6px', fontSize: '11px', color: '#34d399' }}>✅ 模型已成功更新</div>
+                  )}
+                </div>
               </div>
-            </div>
-
-            <div className="input-item">
-              <label>强制硬件调度切换 (Inference Device Toggle)</label>
-              <select value={settings.inferenceDevice} onChange={(e) => updateSetting("inferenceDevice", e.target.value)}>
-                <option value="auto">自动调度 (首选显卡 WebGPU，失败自动降级)</option>
-                <option value="webgpu">仅限 WebGPU (强制调用显卡进行高并发推理)</option>
-                <option value="wasm">强制 WASM (完全脱离显卡驱动，使用 CPU 高兼容推理)</option>
-              </select>
-              <p className="input-tip">当您发现录音后立刻崩溃或无法识别时，请尝试切换为强制 WASM 模式绕过显卡驱动兼容问题。</p>
             </div>
           </>
         )}

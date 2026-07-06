@@ -17,7 +17,6 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { AudioRecorder, float32ToWav } from "./utils/audio";
-import { initWhisper, transcribeAudio } from "./utils/whisper";
 import { refineText, LLMConfig } from "./utils/llm";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -92,7 +91,6 @@ function App() {
   const { settings, updateSetting, saveSettings, saveStatus } = useSettings();
   const { history, addHistoryItem, updateHistoryItem, deleteHistoryItem, clearHistory, copyToClipboard, copiedId } = useHistory();
 
-  const [lastContext, setLastContext] = useState("");
 
   const [autostartEnabled, setAutostartEnabled] = useState(false);
 
@@ -188,7 +186,7 @@ function App() {
 
   const [retryKey, setRetryKey] = useState(0);
 
-  // 动态初始化或加载本地 Whisper 模型或 SenseVoice
+  // 初始化加载 SenseVoice
   useEffect(() => {
     async function setupWhisper() {
       if (settings.asrEngine === "api") {
@@ -208,40 +206,35 @@ function App() {
           await new Promise(r => setTimeout(r, 500));
         }
 
-        if (settings.whisperModel === "sensevoice-small") {
-          const isReady: boolean = await invoke("check_sensevoice_ready");
-          if (!isReady) {
-            console.log("SenseVoice 模型未就绪，开始下载...");
-            const unlisten = await listen("download-progress", (event: any) => {
-              const { step, progress } = event.payload;
-              console.log("Download progress:", step, progress);
-              setModelProgress(Math.round(progress * 100));
-              setDownloadStep(step);
-            });
-            await new Promise<void>(async (resolve, reject) => {
-              const unlistenSuccess = await listen("download-success", () => {
-                unlistenSuccess();
-                unlistenError();
-                resolve();
-              });
-              const unlistenError = await listen("download-error", (e: any) => {
-                unlistenSuccess();
-                unlistenError();
-                reject(new Error(e.payload));
-              });
-              invoke("download_sensevoice").catch((err) => {
-                unlistenSuccess();
-                unlistenError();
-                reject(err);
-              });
-            });
-            unlisten();
-          }
-        } else {
-          await initWhisper(settings.whisperModel, settings.inferenceDevice, (progress) => {
-            setModelProgress(Math.round(progress));
+        const isReady: boolean = await invoke("check_sensevoice_ready");
+        if (!isReady) {
+          console.log("SenseVoice 模型未就绪，开始下载...");
+          const unlisten = await listen("download-progress", (event: any) => {
+            const { step, progress } = event.payload;
+            console.log("Download progress:", step, progress);
+            setModelProgress(Math.round(progress * 100));
+            setDownloadStep(step);
           });
+          await new Promise<void>(async (resolve, reject) => {
+            const unlistenSuccess = await listen("download-success", () => {
+              unlistenSuccess();
+              unlistenError();
+              resolve();
+            });
+            const unlistenError = await listen("download-error", (e: any) => {
+              unlistenSuccess();
+              unlistenError();
+              reject(new Error(e.payload));
+            });
+            invoke("download_sensevoice").catch((err) => {
+              unlistenSuccess();
+              unlistenError();
+              reject(err);
+            });
+          });
+          unlisten();
         }
+
         setStatus("idle");
       } catch (err: any) {
         console.error(err);
@@ -250,7 +243,7 @@ function App() {
       }
     }
     setupWhisper();
-  }, [settings.whisperModel, settings.inferenceDevice, settings.asrEngine, retryKey]);
+  }, [settings.asrEngine, retryKey]);
 
   const statusRef = useRef(status);
   const startRecordingRef = useRef<any>(null);
@@ -449,7 +442,7 @@ function App() {
   // 当配置为本地 SenseVoice 时，延迟 4 秒在后台静默执行一次极短推理，将 250MB 模型加载进操作系统 Page Cache
   useEffect(() => {
     let timeout: number | null = null;
-    if (settings.asrEngine === 'local' && settings.whisperModel === 'sensevoice-small') {
+    if (settings.asrEngine === 'local') {
       timeout = window.setTimeout(async () => {
         console.log("[预热] 延迟就绪，开始后台预热 SenseVoice 模型...");
         try {
@@ -472,7 +465,7 @@ function App() {
     return () => {
       if (timeout) window.clearTimeout(timeout);
     };
-  }, [settings.asrEngine, settings.whisperModel]);
+  }, [settings.asrEngine]);
 
   // 开始录音
   const startRecording = async () => {
@@ -714,7 +707,7 @@ function App() {
           apiKey: settings.asrApiKey,
           model: settings.asrApiModel
         });
-      } else if (settings.whisperModel === 'sensevoice-small') {
+      } else {
         // 使用 SenseVoice Small 原生推理
         const wavBytes = float32ToWav(audioData, 16000);
         const dataDirPath = await appDataDir();
@@ -733,13 +726,6 @@ function App() {
           setStatus("error");
           return;
         }
-      } else {
-        text = await transcribeAudio(audioData, { 
-          language: settings.asrLanguage === 'auto' ? undefined : settings.asrLanguage,
-          model: settings.whisperModel,
-          device: settings.inferenceDevice,
-          prompt: settings.hotWords ? `${settings.hotWords}。${lastContext}` : lastContext
-        });
       }
       
       const cleanText = text.trim();
@@ -799,7 +785,6 @@ function App() {
       // 如果未配置 AI 密钥，则跳过 AI 润色，作为纯听写工具直接成功录入
       if (!settings.apiKey.trim()) {
         addHistoryItem({ id: Math.random().toString(36).substr(2, 9), timestamp: Date.now(), rawText: finalText, refinedText: finalText, style: settings.promptStyle, success: false });
-        setLastContext((prev) => (prev + " " + finalText).slice(-100));
         setStatus("success");
         setTimeout(() => {
           setStatus("idle");
@@ -845,7 +830,6 @@ function App() {
 
         // 成功，记入历史
         addHistoryItem({ id: Math.random().toString(36).substr(2, 9), timestamp: Date.now(), rawText: finalText, refinedText: refined, style: settings.promptStyle, success: true });
-        setLastContext((prev) => (prev + " " + refined).slice(-100));
         setStatus("success");
         
         setTimeout(() => {
@@ -855,7 +839,6 @@ function App() {
       } catch (err: any) {
         console.error(err);
         addHistoryItem({ id: Math.random().toString(36).substr(2, 9), timestamp: Date.now(), rawText: finalText, refinedText: finalText, style: settings.promptStyle, success: false });
-        setLastContext((prev) => (prev + " " + finalText).slice(-100));
         setErrorMessage("网络异常，AI 润色未成功，已为您保留识别原文。");
         setStatus("error");
       }
@@ -1005,7 +988,6 @@ function App() {
               status={status}
               modelProgress={modelProgress}
               downloadStep={downloadStep}
-              whisperModel={settings.whisperModel}
               listenKey={settings.listenKey}
               errorMessage={errorMessage}
               asrEngine={settings.asrEngine}

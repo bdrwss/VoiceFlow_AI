@@ -5,7 +5,6 @@ interface MainPanelProps {
   status: string;
   modelProgress: number;
   downloadStep?: string;
-  whisperModel: string;
   listenKey: string;
   errorMessage: string;
   asrEngine: string;
@@ -22,7 +21,6 @@ export const MainPanel: React.FC<MainPanelProps> = ({
   status,
   modelProgress,
   downloadStep,
-  whisperModel,
   listenKey,
   errorMessage,
   asrEngine,
@@ -46,7 +44,7 @@ export const MainPanel: React.FC<MainPanelProps> = ({
         <div className="loading-container">
           <RefreshCw className="spin-icon" size={48} />
           <h3>正在加载本地识别模型...</h3>
-          <p>首次运行会自动下载当前模型。后续启动将从本地加载至内存，需耗费数秒时间（约 {whisperModel.includes('medium') ? '1.5GB' : whisperModel.includes('small') ? '460MB' : whisperModel.includes('base') ? '140MB' : '75MB'}）</p>
+          <p>首次运行会自动下载当前模型。后续启动将从本地加载至内存，需耗费数秒时间（约 250MB）</p>
           {downloadStep && (
             <p style={{ fontSize: '0.85em', color: '#888', marginTop: '10px' }}>
               {downloadStep}

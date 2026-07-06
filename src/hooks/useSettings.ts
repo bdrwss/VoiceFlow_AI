@@ -8,8 +8,6 @@ export interface Settings {
   promptStyle: string;
   listenKey: string;
   asrLanguage: string;
-  whisperModel: string;
-  inferenceDevice: string;
   asrEngine: "local" | "api";
   asrApiUrl: string;
   asrApiKey: string;
@@ -27,8 +25,6 @@ const defaultSettings: Settings = {
   promptStyle: "natural",
   listenKey: "RControl",
   asrLanguage: "chinese",
-  whisperModel: "sensevoice-small",
-  inferenceDevice: "auto",
   asrEngine: "local",
   asrApiUrl: "https://api.groq.com/openai/v1/audio/transcriptions",
   asrApiKey: "",
@@ -57,8 +53,6 @@ export function useSettings() {
           promptStyle: localStorage.getItem("vf_prompt_style") || defaultSettings.promptStyle,
           listenKey: localStorage.getItem("vf_listen_key") || defaultSettings.listenKey,
           asrLanguage: localStorage.getItem("vf_asr_language") || defaultSettings.asrLanguage,
-          whisperModel: localStorage.getItem("vf_whisper_model") || defaultSettings.whisperModel,
-          inferenceDevice: localStorage.getItem("vf_inference_device") || defaultSettings.inferenceDevice,
           asrEngine: (localStorage.getItem("vf_asr_engine") as "local" | "api") || defaultSettings.asrEngine,
           asrApiUrl: localStorage.getItem("vf_asr_api_url") || defaultSettings.asrApiUrl,
           asrApiKey: localStorage.getItem("vf_asr_api_key") || defaultSettings.asrApiKey,

@@ -516,7 +516,14 @@ pub async fn transcribe_sensevoice(
         &audio_path
     );
 
-    let output = std::process::Command::new(&exe_path)
+    let mut command = std::process::Command::new(&exe_path);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+    
+    let output = command
         .arg(format!("--sense-voice-model={}", model_path.display()))
         .arg(format!("--tokens={}", tokens_path.display()))
         .arg(format!("--num-threads={}", 4))
