@@ -198,6 +198,16 @@ function App() {
       try {
         setStatus("initializing");
         setModelProgress(0);
+
+        // 发送一次 Dummy IPC 请求以触发 Tauri 可能的 fallback (如 fetch 失败退回到 postMessage)
+        try {
+          await invoke("check_sensevoice_ready");
+        } catch (fallbackErr) {
+          console.warn("Initial IPC check failed, Tauri might be falling back to postMessage:", fallbackErr);
+          // 给一点时间让 Tauri 完成内部的 protocol fallback 切换
+          await new Promise(r => setTimeout(r, 500));
+        }
+
         if (settings.whisperModel === "sensevoice-small") {
           const isReady: boolean = await invoke("check_sensevoice_ready");
           if (!isReady) {
