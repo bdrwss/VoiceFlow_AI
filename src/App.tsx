@@ -88,7 +88,7 @@ function App() {
   const [errorMessage, setErrorMessage] = useState("");
   const [activeTab, setActiveTab] = useState<"main" | "history" | "settings">("main");
   
-  const { settings, updateSetting, saveSettings, saveStatus } = useSettings();
+  const { settings, updateSetting, saveSettings, saveStatus, isDirty } = useSettings();
   const { history, addHistoryItem, updateHistoryItem, deleteHistoryItem, clearHistory, copyToClipboard, copiedId } = useHistory();
 
 
@@ -1021,6 +1021,7 @@ function App() {
               updateSetting={updateSetting}
               saveSettings={saveSettings}
               saveStatus={saveStatus}
+              isDirty={isDirty}
               logs={logs}
               setLogs={setLogs}
               autostartEnabled={autostartEnabled}

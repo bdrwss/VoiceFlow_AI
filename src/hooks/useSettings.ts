@@ -32,11 +32,11 @@ const defaultSettings: Settings = {
   blacklistStr: "LOL.exe, csgo.exe, r5apex.exe, GenshinImpact.exe, dota2.exe",
   hotWords: "",
   typeMode: "simulate",
-  autoStart: false
+  autoStart: true
 };
 
 export function useSettings() {
-  const [settings, setSettingsState] = useState<Settings>(() => {
+  const getInitialSettings = () => {
     try {
       const saved = localStorage.getItem("vf_settings");
       if (saved) {
@@ -67,9 +67,13 @@ export function useSettings() {
       console.error("Failed to load settings", e);
     }
     return defaultSettings;
-  });
+  };
 
+  const [settings, setSettingsState] = useState<Settings>(getInitialSettings);
+  const [savedSettings, setSavedSettings] = useState<Settings>(getInitialSettings);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved">("idle");
+
+  const isDirty = JSON.stringify(settings) !== JSON.stringify(savedSettings);
 
   const updateSetting = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     setSettingsState(prev => ({ ...prev, [key]: value }));
@@ -81,6 +85,7 @@ export function useSettings() {
     // Also save listen_key for rust backend legacy sync if needed, though we sync it below
     localStorage.setItem("vf_listen_key", settings.listenKey);
     
+    setSavedSettings(settings);
     setSaveStatus("saved");
     setTimeout(() => setSaveStatus("idle"), 2000);
   };
@@ -111,6 +116,7 @@ export function useSettings() {
     settings,
     updateSetting,
     saveSettings,
-    saveStatus
+    saveStatus,
+    isDirty
   };
 }

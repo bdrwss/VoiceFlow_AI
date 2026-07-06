@@ -10,6 +10,7 @@ interface SettingsPanelProps {
   updateSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   saveSettings: () => void;
   saveStatus: "idle" | "saved";
+  isDirty?: boolean;
   logs: string[];
   setLogs: React.Dispatch<React.SetStateAction<string[]>>;
   autostartEnabled: boolean;
@@ -21,6 +22,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   updateSetting,
   saveSettings,
   saveStatus,
+  isDirty,
   logs,
   setLogs,
   autostartEnabled,
@@ -421,8 +423,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         className={`save-btn ${saveStatus === "saved" ? "saved-active" : ""}`} 
         onClick={saveSettings} 
         style={{ 
-          marginTop: '15px', 
-          transition: 'all 0.3s ease',
+          position: 'fixed',
+          bottom: '30px',
+          right: '30px',
+          zIndex: 1000,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          opacity: (isDirty || saveStatus === "saved") ? 1 : 0,
+          pointerEvents: (isDirty || saveStatus === "saved") ? 'auto' : 'none',
+          transform: (isDirty || saveStatus === "saved") ? 'translateY(0)' : 'translateY(20px)',
+          transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
           backgroundColor: saveStatus === "saved" ? 'rgba(52, 211, 153, 0.2)' : undefined,
           borderColor: saveStatus === "saved" ? 'rgba(52, 211, 153, 0.4)' : undefined,
           color: saveStatus === "saved" ? '#34d399' : undefined
