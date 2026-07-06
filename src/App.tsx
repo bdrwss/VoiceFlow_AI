@@ -208,7 +208,23 @@ function App() {
               setModelProgress(Math.round(progress * 100));
               setDownloadStep(step);
             });
-            await invoke("download_sensevoice");
+            await new Promise<void>(async (resolve, reject) => {
+              const unlistenSuccess = await listen("download-success", () => {
+                unlistenSuccess();
+                unlistenError();
+                resolve();
+              });
+              const unlistenError = await listen("download-error", (e: any) => {
+                unlistenSuccess();
+                unlistenError();
+                reject(new Error(e.payload));
+              });
+              invoke("download_sensevoice").catch((err) => {
+                unlistenSuccess();
+                unlistenError();
+                reject(err);
+              });
+            });
             unlisten();
           }
         } else {

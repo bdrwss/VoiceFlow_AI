@@ -306,8 +306,7 @@ pub async fn check_sensevoice_ready(app_handle: AppHandle) -> Result<bool, Strin
     Ok(exe_path.exists() && find_ready_model(&sherpa_dir).is_some())
 }
 
-#[tauri::command]
-pub async fn download_sensevoice(app_handle: AppHandle) -> Result<(), String> {
+pub async fn do_download_sensevoice(app_handle: AppHandle) -> Result<(), String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
@@ -442,8 +441,7 @@ pub async fn download_sensevoice(app_handle: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-pub async fn force_redownload_sensevoice(app_handle: AppHandle) -> Result<(), String> {
+pub async fn do_force_redownload_sensevoice(app_handle: AppHandle) -> Result<(), String> {
     let app_data_dir = app_handle
         .path()
         .app_data_dir()
@@ -454,7 +452,35 @@ pub async fn force_redownload_sensevoice(app_handle: AppHandle) -> Result<(), St
         let _ = fs::remove_dir_all(&sherpa_dir);
     }
 
-    download_sensevoice(app_handle).await
+    do_download_sensevoice(app_handle).await
+}
+
+#[tauri::command]
+pub fn download_sensevoice(app_handle: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        match do_download_sensevoice(app_handle.clone()).await {
+            Ok(_) => {
+                let _ = app_handle.emit("download-success", ());
+            }
+            Err(e) => {
+                let _ = app_handle.emit("download-error", e);
+            }
+        }
+    });
+}
+
+#[tauri::command]
+pub fn force_redownload_sensevoice(app_handle: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        match do_force_redownload_sensevoice(app_handle.clone()).await {
+            Ok(_) => {
+                let _ = app_handle.emit("download-success", ());
+            }
+            Err(e) => {
+                let _ = app_handle.emit("download-error", e);
+            }
+        }
+    });
 }
 
 #[tauri::command]

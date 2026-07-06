@@ -56,7 +56,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         setDownloadStep(step);
         setDownloadProgress(Math.round(progress * 100));
       });
-      await invoke("force_redownload_sensevoice");
+      await new Promise<void>(async (resolve, reject) => {
+        const unlistenSuccess = await listen("download-success", () => {
+          unlistenSuccess();
+          unlistenError();
+          resolve();
+        });
+        const unlistenError = await listen("download-error", (e: any) => {
+          unlistenSuccess();
+          unlistenError();
+          reject(new Error(e.payload));
+        });
+        invoke("force_redownload_sensevoice").catch((err) => {
+          unlistenSuccess();
+          unlistenError();
+          reject(err);
+        });
+      });
       setDownloadStep("下载完成，已准备就绪！");
       setDownloadProgress(100);
       setTimeout(() => {
