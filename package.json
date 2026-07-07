@@ -1,7 +1,7 @@
 {
   "name": "voiceflow-ai",
   "private": true,
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "VoiceFlow AI - Intelligent Voice Typing Assistant",
   "license": "UNLICENSED",
   "type": "module",
