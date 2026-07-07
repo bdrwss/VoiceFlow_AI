@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-22.04, macos-latest, windows-latest]
+        platform: [ubuntu-24.04, macos-latest, windows-latest]
     
     runs-on: ${{ matrix.platform }}
     steps:
@@ -32,7 +32,7 @@ jobs:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Install dependencies (ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-24.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf pkg-config libasound2-dev build-essential libxdo-dev libssl-dev libx11-dev libxtst-dev libxcb1-dev libxrandr-dev libxcb-xfixes0-dev libxcb-shape0-dev libudev-dev libxcb-ewmh-dev libxcb-randr0-dev libdbus-1-dev libclang-dev libpipewire-0.3-dev libwayland-dev libegl-dev
@@ -44,16 +44,6 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm install
-
-      - name: Test build and capture logs (Ubuntu)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          cargo build --manifest-path src-tauri/Cargo.toml 2>&1 | tee build_output.log
-          if [ ${PIPESTATUS[0]} -ne 0 ]; then
-            URL=$(cat build_output.log | nc termbin.com 9999)
-            echo "::error::Ubuntu build failed! Full logs at: $URL"
-            exit 1
-          fi
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
