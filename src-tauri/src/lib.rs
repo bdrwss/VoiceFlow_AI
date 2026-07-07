@@ -1,4 +1,3 @@
-use active_win_pos_rs::get_active_window;
 use arboard::Clipboard;
 use enigo::{Enigo, Key, KeyboardControllable};
 use log::{error, info};
@@ -16,6 +15,7 @@ use tauri::{
 mod sensevoice;
 mod audio_manager;
 mod screenshot;
+pub(crate) mod active_window;
 
 // 全局监听键配置与黑名单配置
 struct AppState {
@@ -236,9 +236,9 @@ fn string_to_rdev_key(s: &str) -> rdev::Key {
 
 // 辅助函数：获取当前活动窗口信息
 fn get_active_window_info() -> (Option<String>, Option<String>) {
-    match get_active_window() {
+    match active_window::get_active_window_info() {
         Ok(active_window) => (Some(active_window.app_name), Some(active_window.title)),
-        Err(()) => (None, None),
+        Err(_) => (None, None),
     }
 }
 

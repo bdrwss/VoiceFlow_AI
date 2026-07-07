@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.21",
   "description": "VoiceFlow AI - Intelligent Voice Typing Assistant",
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "dev": "vite",
