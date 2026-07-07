@@ -45,6 +45,16 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Test build and capture logs (Ubuntu)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          cargo build --manifest-path src-tauri/Cargo.toml 2>&1 | tee build_output.log
+          if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            URL=$(cat build_output.log | nc termbin.com 9999)
+            echo "::error::Ubuntu build failed! Full logs at: $URL"
+            exit 1
+          fi
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
